@@ -5,13 +5,13 @@ import (
 	"time"
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
+	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 	video "github.com/anthonybliss1/Sentry/Node/Video"
-	"github.com/fatih/color"
 )
 
 var (
-	green = color.New(color.FgGreen)
-	red   = color.New(color.FgRed)
+	node   network.NodeClient
+	stream video.Stream
 )
 
 func main() {
@@ -30,41 +30,43 @@ func main() {
 	// }
 
 	// validate outputDir for video segments
-	hlsDir, err := video.ValidateOutputDir()
+	hlsDir, err := utils.ValidateOutputDir()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) // should kill program if no valid outputDir
 	}
 
+	// find Hub services for (WS and FS)
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	foundServers := false
-	node := network.NodeClient{}
 
-	// Look for hub servers until both are found
 	for !foundServers {
 		if err := node.MDNSLookup(); err != nil {
 			log.Fatal(err)
 		}
 
+		// check if both services have been found
 		node.Mu.Lock()
-		foundServers = node.Hub.WS != (network.Websocket{}) && node.Hub.FS != (network.FileServer{})
+		foundServers = node.WS != (network.Websocket{}) && node.FS != (network.FileServer{})
 		node.Mu.Unlock()
 	}
 
 	// initialize file agent to watch hlsDir
-	green.Println("> Deploying Watchdog...")
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	utils.Blue.Println("> Deploying Watchdog...")
 	go network.DeployWatchdog(&node, hlsDir)
 
 	// start recording and creating segments
-	green.Println("> Starting Video Stream...")
-	stream, err := video.StartStream(hlsDir)
-	if err != nil {
-		red.Print(err)
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	utils.Blue.Println("> Starting Video Stream...")
+	if err := stream.Start(hlsDir); err != nil {
+		utils.Red.Print(err)
 	}
 
-	// wait a bit
+	// test end
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	time.Sleep(120 * time.Second)
 
-	// test stop
 	if err := stream.Stop(); err != nil {
-		red.Print(err)
+		utils.Red.Print(err)
 	}
 }

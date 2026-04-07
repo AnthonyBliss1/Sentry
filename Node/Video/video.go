@@ -3,7 +3,6 @@ package video
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -43,24 +42,7 @@ func (s *Stream) Stop() error {
 	return nil
 }
 
-func ValidateOutputDir() (hlsDir string, err error) {
-	ex, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("failed to find binary path: %w", err)
-	}
-
-	cwd := filepath.Dir(ex)
-	hlsDir = filepath.Join(cwd, "HLS")
-
-	// Ensure HLS Dir exists
-	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to make HLS Dir: %w", err)
-	}
-
-	return hlsDir, nil
-}
-
-func StartStream(hlsDir string) (*Stream, error) {
+func (s *Stream) Start(hlsDir string) error {
 	segmentPattern := filepath.Join(hlsDir, "segment_%03d.ts")
 	playlistPath := filepath.Join(hlsDir, "stream.m3u8")
 
@@ -91,10 +73,12 @@ func StartStream(hlsDir string) (*Stream, error) {
 	cmd.Stdout = io.Discard
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
+		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
-	stream := Stream{cmd: cmd}
+	s.mu.Lock()
+	s.cmd = cmd
+	s.mu.Unlock()
 
-	return &stream, nil
+	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -45,22 +44,11 @@ type FileServer struct {
 	Port     int
 }
 
-type HubServer struct {
+type NodeClient struct {
 	WS Websocket
 	FS FileServer
-}
 
-type NodeClient struct {
-	Mu  sync.Mutex
-	Hub HubServer
-}
-
-// Init Logger
-// ~~~~~~~~~~~~~~~~~~~~~~
-
-func init() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	slog.SetDefault(logger)
+	Mu sync.Mutex
 }
 
 // MDNS Lookups
@@ -80,6 +68,7 @@ func (n *NodeClient) MDNSLookup() error {
 
 func (n *NodeClient) lookupWS() error {
 	entriesCH := make(chan *mdns.ServiceEntry, 16)
+	defer close(entriesCH)
 
 	go func() {
 		for entry := range entriesCH {
@@ -93,30 +82,30 @@ func (n *NodeClient) lookupWS() error {
 				continue
 			}
 
-			// slog.Debug("Hub Server found", "Found WS Entry", entry.Name, "Port", entry.Port)
-
 			ws := Websocket{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
 			wsURL := fmt.Sprintf("ws://%s:%d/ws", ws.Addr, ws.Port)
 			ws.URL = wsURL
 
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
-			if n.Hub.WS == (Websocket{}) {
-				green.Print("> Stored WS Server ")
-				blue.Printf("[ %s ]\n", n.Hub.WS.Hostname)
-				n.Hub.WS = ws
+			if n.WS == (Websocket{}) {
+				blue.Printf("[ Stored WS Server - %s ]\n", n.WS.Hostname)
+				n.WS = ws
 			}
 			n.Mu.Unlock()
 		}
 	}()
 
-	err := mdns.Lookup(WSService, entriesCH)
-	close(entriesCH)
-	return err
+	if err := mdns.Lookup(WSService, entriesCH); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (n *NodeClient) lookupFS() error {
 	entriesCH := make(chan *mdns.ServiceEntry, 16)
+	defer close(entriesCH)
 
 	go func() {
 		for entry := range entriesCH {
@@ -130,26 +119,25 @@ func (n *NodeClient) lookupFS() error {
 				continue
 			}
 
-			// slog.Debug("Hub Server found", "Found FS Entry", entry.Name, "Port", entry.Port)
-
 			fs := FileServer{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
 			fsURL := fmt.Sprintf("http://%s:%d", fs.Addr, fs.Port)
 			fs.URL = fsURL
 
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
-			if n.Hub.FS == (FileServer{}) {
-				green.Print("> Stored FS Server ")
-				blue.Printf("[ %s ]\n", n.Hub.FS.Hostname)
-				n.Hub.FS = fs
+			if n.FS == (FileServer{}) {
+				blue.Printf("[ Stored FS Server - %s ]\n", n.WS.Hostname)
+				n.FS = fs
 			}
 			n.Mu.Unlock()
 		}
 	}()
 
-	err := mdns.Lookup(FSService, entriesCH)
-	close(entriesCH)
-	return err
+	if err := mdns.Lookup(FSService, entriesCH); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // FS Upload
@@ -157,7 +145,7 @@ func (n *NodeClient) lookupFS() error {
 
 func (n *NodeClient) UploadFile(filePath string) error {
 	// ensure nodeclient has a valid address
-	if n.Hub.FS.URL == "" {
+	if n.FS.URL == "" {
 		log.Fatal(errors.New("[FS] no adress found"))
 	}
 
@@ -173,7 +161,7 @@ func (n *NodeClient) UploadFile(filePath string) error {
 		return fmt.Errorf("[FS] read empty file: %w", err)
 	}
 
-	req, err := http.NewRequest("Port", n.Hub.FS.URL+"/upload/123", bytes.NewBuffer(b))
+	req, err := http.NewRequest("POST", n.FS.URL+"/upload/123", bytes.NewBuffer(b))
 	if err != nil {
 		return fmt.Errorf("[FS] failed to create http request: %w", err)
 	}
@@ -182,13 +170,13 @@ func (n *NodeClient) UploadFile(filePath string) error {
 	var client *http.Client
 
 	n.Mu.Lock()
-	if n.Hub.FS.Client == nil {
+	if n.FS.Client == nil {
 		// create and store client
 		client = &http.Client{}
-		n.Hub.FS.Client = client
+		n.FS.Client = client
 	} else {
 		// grab stored client
-		client = n.Hub.FS.Client
+		client = n.FS.Client
 	}
 	n.Mu.Unlock()
 
