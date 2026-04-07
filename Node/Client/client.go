@@ -8,12 +8,21 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fatih/color"
 	"github.com/hashicorp/mdns"
 )
 
+// service names to search for
 const (
 	WSService = "_Sentry-Hub-WS._tcp"
 	FSService = "_Sentry-Hub-FS._tcp"
+)
+
+// stdout styling
+var (
+	green = color.New(color.FgGreen)
+	blue  = color.New(color.FgBlue)
+	red   = color.New(color.FgRed)
 )
 
 type Websocket struct {
@@ -65,7 +74,7 @@ func (n *NodeClient) lookupWS() error {
 				continue
 			}
 
-			slog.Debug("Hub Server found", "Found WS Entry", entry.Name, "Port", entry.Port)
+			// slog.Debug("Hub Server found", "Found WS Entry", entry.Name, "Port", entry.Port)
 
 			ws := Websocket{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
 			wsURL := fmt.Sprintf("ws://%s:%d/ws", ws.Addr, ws.Port)
@@ -74,7 +83,8 @@ func (n *NodeClient) lookupWS() error {
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
 			if n.Hub.WS == (Websocket{}) {
-				slog.Debug("Stored WS Server")
+				green.Print("> Stored WS Server ")
+				blue.Printf("[ %s ]\n", n.Hub.WS.Hostname)
 				n.Hub.WS = ws
 			}
 			n.Mu.Unlock()
@@ -101,7 +111,7 @@ func (n *NodeClient) lookupFS() error {
 				continue
 			}
 
-			slog.Debug("Hub Server found", "Found FS Entry", entry.Name, "Port", entry.Port)
+			// slog.Debug("Hub Server found", "Found FS Entry", entry.Name, "Port", entry.Port)
 
 			fs := FileServer{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
 			fsURL := fmt.Sprintf("http://%s:%d", fs.Addr, fs.Port)
@@ -110,7 +120,8 @@ func (n *NodeClient) lookupFS() error {
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
 			if n.Hub.FS == (FileServer{}) {
-				slog.Debug("Stored FS Server")
+				green.Print("> Stored FS Server ")
+				blue.Printf("[ %s ]\n", n.Hub.FS.Hostname)
 				n.Hub.FS = fs
 			}
 			n.Mu.Unlock()
@@ -121,6 +132,8 @@ func (n *NodeClient) lookupFS() error {
 	close(entriesCH)
 	return err
 }
+
+// encapsulate both service lookup functions
 
 func (n *NodeClient) MDNSLookup() error {
 	if err := n.lookupWS(); err != nil {

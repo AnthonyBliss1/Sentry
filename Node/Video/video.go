@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,31 +43,31 @@ func (s *Stream) Stop() error {
 	return nil
 }
 
-// private helper function
-func validateOutputDir() error {
+func ValidateOutputDir() (hlsDir string, err error) {
 	ex, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("failed to find binary path: %w", err)
+		return "", fmt.Errorf("failed to find binary path: %w", err)
 	}
 
 	cwd := filepath.Dir(ex)
-	hlsDir := filepath.Join(cwd, "HLS")
+	hlsDir = filepath.Join(cwd, "HLS")
 
 	// Ensure HLS Dir exists
 	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-		return fmt.Errorf("failed to make HLS Dir: %w", err)
+		return "", fmt.Errorf("failed to make HLS Dir: %w", err)
 	}
 
-	return nil
+	return hlsDir, nil
 }
 
-func StartStream() (*Stream, error) {
-	if err := validateOutputDir(); err != nil {
-		return nil, err
-	}
+func StartStream(hlsDir string) (*Stream, error) {
+	segmentPattern := filepath.Join(hlsDir, "segment_%03d.ts")
+	playlistPath := filepath.Join(hlsDir, "stream.m3u8")
 
 	cmd := exec.Command(
 		"ffmpeg",
+		"-loglevel", "quiet",
+		"-nostats",
 		"-f", "v4l2",
 		"-framerate", "30",
 		"-video_size", "640x480",
@@ -79,12 +80,15 @@ func StartStream() (*Stream, error) {
 		"-hls_time", "2",
 		"-hls_list_size", "6",
 		"-hls_flags", "delete_segments",
-		"-hls_segment_filename", "HLS/segment_%03d.ts",
-		"HLS/stream.m3u8",
+		"-hls_segment_filename", segmentPattern,
+		playlistPath,
 	)
 
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+	// need to output all these to log files but
+	// should be careful of the log build up
+	// for now just getting them out of the way
+	cmd.Stderr = io.Discard
+	cmd.Stdout = io.Discard
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
