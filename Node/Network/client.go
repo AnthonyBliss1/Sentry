@@ -89,7 +89,7 @@ func (n *NodeClient) lookupWS() error {
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
 			if n.WS == (Websocket{}) {
-				blue.Printf("[ Stored WS Server - %s ]\n", n.WS.Hostname)
+				blue.Printf("[ Stored WS Server - %s ]\n", ws.Hostname)
 				n.WS = ws
 			}
 			n.Mu.Unlock()
@@ -126,7 +126,7 @@ func (n *NodeClient) lookupFS() error {
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
 			if n.FS == (FileServer{}) {
-				blue.Printf("[ Stored FS Server - %s ]\n", n.WS.Hostname)
+				blue.Printf("[ Stored FS Server - %s ]\n", fs.Hostname)
 				n.FS = fs
 			}
 			n.Mu.Unlock()
@@ -146,7 +146,7 @@ func (n *NodeClient) lookupFS() error {
 func (n *NodeClient) UploadFile(filePath string) error {
 	// ensure nodeclient has a valid address
 	if n.FS.URL == "" {
-		log.Fatal(errors.New("[FS] no adress found"))
+		log.Fatal(errors.New("[FS] no address found"))
 	}
 
 	b, err := os.ReadFile(filePath)
@@ -158,7 +158,7 @@ func (n *NodeClient) UploadFile(filePath string) error {
 
 	// safeguard against some potential file write issues
 	if len(b) == 0 {
-		return fmt.Errorf("[FS] read empty file: %w", err)
+		return errors.New("[FS] read empty file")
 	}
 
 	req, err := http.NewRequest("POST", n.FS.URL+"/upload/123", bytes.NewBuffer(b))

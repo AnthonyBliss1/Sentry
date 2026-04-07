@@ -39,7 +39,7 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 
 				// trigger for final .ts segements that are ready to send to Hub
 				if strings.HasSuffix(base, ".ts") && event.Has(fsnotify.Create) {
-					utils.Green.Printf("<CREATE> Sending complete segment [ %s ]\n", name)
+					utils.Blue.Printf("<CREATE> Sending complete segment [ %s ]\n", name)
 
 					// upload file
 					if err := n.UploadFile(name); err != nil {
@@ -55,7 +55,7 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 						continue
 					}
 
-					utils.Green.Printf("<PLAYLIST> Sending complete playlist [ %s ]\n", playlistPath)
+					utils.Blue.Printf("<PLAYLIST> Sending complete playlist [ %s ]\n", playlistPath)
 
 					// upload file
 					if err := n.UploadFile(playlistPath); err != nil {
