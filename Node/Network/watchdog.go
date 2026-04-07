@@ -1,4 +1,4 @@
-package client
+package network
 
 import (
 	"os"
@@ -39,7 +39,11 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 				// trigger for final .ts segements that are ready to send to Hub
 				if strings.HasSuffix(base, ".ts") && event.Has(fsnotify.Create) {
 					blue.Printf("<CREATE> Sending complete segment [ %s ]\n", name)
-					// use the NodeClient and send the segment to Hub
+
+					// upload file
+					if err := n.UploadFile(name); err != nil {
+						red.Println(err) // dont want to crash the pipeline on an upload error
+					}
 					continue
 				}
 
@@ -51,7 +55,11 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 					}
 
 					blue.Printf("<PLAYLIST> Sending complete playlist [ %s ]\n", playlistPath)
-					// use the NodeClient and send the playlist to Hub
+
+					// upload file
+					if err := n.UploadFile(playlistPath); err != nil {
+						red.Println(err) // dont want to crash the pipeline on an upload error
+					}
 					continue
 				}
 

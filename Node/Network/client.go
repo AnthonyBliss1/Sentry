@@ -1,7 +1,11 @@
-package client
+package network
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,8 +30,6 @@ var (
 )
 
 type Websocket struct {
-	Server *http.Server
-
 	URL      string
 	Hostname string
 	Addr     string
@@ -35,7 +37,7 @@ type Websocket struct {
 }
 
 type FileServer struct {
-	Server *http.Server
+	Client *http.Client
 
 	URL      string
 	Hostname string
@@ -53,10 +55,27 @@ type NodeClient struct {
 	Hub HubServer
 }
 
+// Init Logger
+// ~~~~~~~~~~~~~~~~~~~~~~
+
 func init() {
-	// setup logger
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
+}
+
+// MDNS Lookups
+// ~~~~~~~~~~~~~~~~~~~~~~~
+
+func (n *NodeClient) MDNSLookup() error {
+	if err := n.lookupWS(); err != nil {
+		return err
+	}
+
+	if err := n.lookupFS(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (n *NodeClient) lookupWS() error {
@@ -133,16 +152,62 @@ func (n *NodeClient) lookupFS() error {
 	return err
 }
 
-// encapsulate both service lookup functions
+// FS Upload
+// ~~~~~~~~~~~~~~~~~~
 
-func (n *NodeClient) MDNSLookup() error {
-	if err := n.lookupWS(); err != nil {
-		return err
+func (n *NodeClient) UploadFile(filePath string) error {
+	// ensure nodeclient has a valid address
+	if n.Hub.FS.URL == "" {
+		log.Fatal(errors.New("[FS] no adress found"))
 	}
 
-	if err := n.lookupFS(); err != nil {
-		return err
+	b, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("[FS] file not found: %w", err)
+		}
 	}
+
+	// safeguard against some potential file write issues
+	if len(b) == 0 {
+		return fmt.Errorf("[FS] read empty file: %w", err)
+	}
+
+	req, err := http.NewRequest("Port", n.Hub.FS.URL+"/upload/123", bytes.NewBuffer(b))
+	if err != nil {
+		return fmt.Errorf("[FS] failed to create http request: %w", err)
+	}
+
+	// shouldnt create a client the every time
+	var client *http.Client
+
+	n.Mu.Lock()
+	if n.Hub.FS.Client == nil {
+		// create and store client
+		client = &http.Client{}
+		n.Hub.FS.Client = client
+	} else {
+		// grab stored client
+		client = n.Hub.FS.Client
+	}
+	n.Mu.Unlock()
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("[FS] failed to do request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("[FS] not ok response status: %s", resp.Status)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("[FS] failed to read response body: %w", err)
+	}
+	defer resp.Body.Close()
+
+	green.Printf("[FS] %s\n", string(bodyBytes))
 
 	return nil
 }

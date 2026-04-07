@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	client "github.com/anthonybliss1/Sentry/Node/Client"
+	network "github.com/anthonybliss1/Sentry/Node/Network"
 	video "github.com/anthonybliss1/Sentry/Node/Video"
 	"github.com/fatih/color"
 )
@@ -36,7 +36,7 @@ func main() {
 	}
 
 	foundServers := false
-	node := client.NodeClient{}
+	node := network.NodeClient{}
 
 	// Look for hub servers until both are found
 	for !foundServers {
@@ -45,13 +45,13 @@ func main() {
 		}
 
 		node.Mu.Lock()
-		foundServers = node.Hub.WS != (client.Websocket{}) && node.Hub.FS != (client.FileServer{})
+		foundServers = node.Hub.WS != (network.Websocket{}) && node.Hub.FS != (network.FileServer{})
 		node.Mu.Unlock()
 	}
 
 	// initialize file agent to watch hlsDir
 	green.Println("> Deploying Watchdog...")
-	go client.DeployWatchdog(&node, hlsDir)
+	go network.DeployWatchdog(&node, hlsDir)
 
 	// start recording and creating segments
 	green.Println("> Starting Video Stream...")
