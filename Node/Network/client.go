@@ -2,12 +2,11 @@ package network
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -145,9 +144,9 @@ func (n *NodeClient) lookupFS() error {
 
 func (n *NodeClient) UploadFile(filePath string) error {
 	// ensure nodeclient has a valid address
-	if n.FS.URL == "" {
-		log.Fatal(errors.New("[FS] no address found"))
-	}
+	//	if n.FS.URL == "" {
+	//		log.Fatal(errors.New("[FS] no url found"))
+	//	}
 
 	b, err := os.ReadFile(filePath)
 	if err != nil {
@@ -158,7 +157,7 @@ func (n *NodeClient) UploadFile(filePath string) error {
 
 	// safeguard against some potential file write issues
 	if len(b) == 0 {
-		return errors.New("[FS] read empty file")
+		return fmt.Errorf("[FS] read empty file: %s", filepath.Base(filePath))
 	}
 
 	req, err := http.NewRequest("POST", n.FS.URL+"/upload/123", bytes.NewBuffer(b))
