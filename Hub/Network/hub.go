@@ -52,10 +52,11 @@ func (h *Hub) StartFS() {
 
 	r.Use(middleware.Logger)
 
-	r.Post("/upload/{deviceID}", func(w http.ResponseWriter, r *http.Request) {
+	r.Post("/upload/{deviceID}/{fileName}", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "deviceID") // grab the id from the qParam
+		fileName := chi.URLParam(r, "fileName")
 
-		msg := fmt.Sprintf("Uploaded File for device: %s", id) // test msg
+		msg := fmt.Sprintf("Successfully Uploaded File [%s] for device: %s", fileName, id) // test msg
 
 		w.Write([]byte(msg)) // write msg
 	})

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"time"
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
@@ -46,14 +47,25 @@ func main() {
 
 		// check if both services have been found
 		node.Mu.Lock()
-		foundServers = node.WS != (network.Websocket{}) && node.FS != (network.FileServer{})
+		foundServers = (node.WS != (network.Websocket{}) && node.FS != (network.FileServer{}))
 		node.Mu.Unlock()
+
+		if !foundServers {
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
+
+	// initialize client for FS
+	node.FS.Client = &http.Client{}
 
 	// initialize file agent to watch hlsDir
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	utils.Blue.Println("> Deploying Watchdog...")
-	go network.DeployWatchdog(&node, hlsDir)
+	go func() {
+		if err := network.DeployWatchdog(&node, hlsDir); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	// start recording and creating segments
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

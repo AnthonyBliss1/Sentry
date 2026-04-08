@@ -2,6 +2,7 @@ package network
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,12 +55,37 @@ type NodeClient struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
 func (n *NodeClient) MDNSLookup() error {
-	if err := n.lookupWS(); err != nil {
-		return err
+	n.Mu.Lock()
+	hasWS := n.WS != (Websocket{})
+	hasFS := n.FS != (FileServer{})
+	n.Mu.Unlock()
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+
+	if !hasWS {
+		wg.Go(func() {
+			if err := n.lookupWS(); err != nil {
+				errCh <- err
+			}
+		})
 	}
 
-	if err := n.lookupFS(); err != nil {
-		return err
+	if !hasFS {
+		wg.Go(func() {
+			if err := n.lookupFS(); err != nil {
+				errCh <- err
+			}
+		})
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -67,92 +93,81 @@ func (n *NodeClient) MDNSLookup() error {
 
 func (n *NodeClient) lookupWS() error {
 	entriesCH := make(chan *mdns.ServiceEntry, 16)
-	defer close(entriesCH)
+	errCH := make(chan error, 1)
 
 	go func() {
-		for entry := range entriesCH {
-			// frontline check
-			if !strings.Contains(entry.Name, WSService) || entry.Port != 8000 {
-				continue
-			}
-
-			// make sure there is a address
-			if entry.AddrV4 == nil {
-				continue
-			}
-
-			ws := Websocket{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
-			wsURL := fmt.Sprintf("ws://%s:%d/ws", ws.Addr, ws.Port)
-			ws.URL = wsURL
-
-			// first come first serve (for now, will change to hostname targeting i think later)
-			n.Mu.Lock()
-			if n.WS == (Websocket{}) {
-				blue.Printf("[ Stored WS Server - %s ]\n", ws.Hostname)
-				n.WS = ws
-			}
-			n.Mu.Unlock()
-		}
+		errCH <- mdns.Lookup(WSService, entriesCH)
+		close(entriesCH)
 	}()
 
-	if err := mdns.Lookup(WSService, entriesCH); err != nil {
-		return err
+	for entry := range entriesCH {
+		// frontline check
+		if !strings.Contains(entry.Name, WSService) || entry.Port != 8000 {
+			continue
+		}
+
+		// make sure there is a address
+		if entry.AddrV4 == nil {
+			continue
+		}
+
+		ws := Websocket{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
+		ws.URL = fmt.Sprintf("ws://%s:%d/ws", ws.Addr, ws.Port)
+
+		// first come first serve (for now, will change to hostname targeting i think later)
+		n.Mu.Lock()
+		if n.WS == (Websocket{}) {
+			blue.Printf("[ Stored WS Server - %s ]\n", ws.Hostname)
+			n.WS = ws
+		}
+		n.Mu.Unlock()
 	}
 
-	return nil
+	return <-errCH
 }
 
 func (n *NodeClient) lookupFS() error {
 	entriesCH := make(chan *mdns.ServiceEntry, 16)
-	defer close(entriesCH)
+	errCH := make(chan error, 1)
 
 	go func() {
-		for entry := range entriesCH {
-			// frontline check
-			if !strings.Contains(entry.Name, FSService) || entry.Port != 8080 {
-				continue
-			}
-
-			// make sure there is a address
-			if entry.AddrV4 == nil {
-				continue
-			}
-
-			fs := FileServer{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
-			fsURL := fmt.Sprintf("http://%s:%d", fs.Addr, fs.Port)
-			fs.URL = fsURL
-
-			// first come first serve (for now, will change to hostname targeting i think later)
-			n.Mu.Lock()
-			if n.FS == (FileServer{}) {
-				blue.Printf("[ Stored FS Server - %s ]\n", fs.Hostname)
-				n.FS = fs
-			}
-			n.Mu.Unlock()
-		}
+		errCH <- mdns.Lookup(FSService, entriesCH)
+		close(entriesCH)
 	}()
 
-	if err := mdns.Lookup(FSService, entriesCH); err != nil {
-		return err
+	for entry := range entriesCH {
+		// frontline check
+		if !strings.Contains(entry.Name, FSService) || entry.Port != 8080 {
+			continue
+		}
+
+		// make sure there is a address
+		if entry.AddrV4 == nil {
+			continue
+		}
+
+		fs := FileServer{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
+		fs.URL = fmt.Sprintf("http://%s:%d", fs.Addr, fs.Port)
+
+		// first come first serve (for now, will change to hostname targeting i think later)
+		n.Mu.Lock()
+		if n.FS == (FileServer{}) {
+			blue.Printf("[ Stored FS Server - %s ]\n", fs.Hostname)
+			n.FS = fs
+		}
+		n.Mu.Unlock()
 	}
 
-	return nil
+	return <-errCH
 }
 
 // FS Upload
 // ~~~~~~~~~~~~~~~~~~
 
 func (n *NodeClient) UploadFile(filePath string) error {
-	// ensure nodeclient has a valid address
-	//	if n.FS.URL == "" {
-	//		log.Fatal(errors.New("[FS] no url found"))
-	//	}
-
 	b, err := os.ReadFile(filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("[FS] file not found: %w", err)
-		}
+		return fmt.Errorf("[FS] failed to read file: %w", err)
 	}
 
 	// safeguard against some potential file write issues
@@ -160,29 +175,36 @@ func (n *NodeClient) UploadFile(filePath string) error {
 		return fmt.Errorf("[FS] read empty file: %s", filepath.Base(filePath))
 	}
 
-	req, err := http.NewRequest("POST", n.FS.URL+"/upload/123", bytes.NewBuffer(b))
+	n.Mu.Lock()
+
+	// ensure nodeclient has a valid address
+	if n.FS.URL == "" {
+		n.Mu.Unlock()
+		return errors.New("[FS] no url found")
+	}
+
+	// need to swap out 123 for unique id maybe
+	url := n.FS.URL + "/upload/123/" + filepath.Base(filePath)
+
+	// ensure nodeclient has a valid client
+	if n.FS.Client == nil {
+		n.Mu.Unlock()
+		return errors.New("[FS] no http client found")
+	}
+
+	client := n.FS.Client
+	n.Mu.Unlock()
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
 	if err != nil {
 		return fmt.Errorf("[FS] failed to create http request: %w", err)
 	}
-
-	// shouldnt create a client the every time
-	var client *http.Client
-
-	n.Mu.Lock()
-	if n.FS.Client == nil {
-		// create and store client
-		client = &http.Client{}
-		n.FS.Client = client
-	} else {
-		// grab stored client
-		client = n.FS.Client
-	}
-	n.Mu.Unlock()
 
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("[FS] failed to do request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("[FS] not ok response status: %s", resp.Status)
@@ -192,7 +214,6 @@ func (n *NodeClient) UploadFile(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("[FS] failed to read response body: %w", err)
 	}
-	defer resp.Body.Close()
 
 	green.Printf("[FS] %s\n", string(bodyBytes))
 
