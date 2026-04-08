@@ -36,8 +36,8 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 
 			// trigger for final .ts segements that are ready to send to Hub
 			// using write because create would result in picking up imcomplete files
-			if strings.HasSuffix(base, ".ts") && event.Has(fsnotify.Write) {
-				utils.Blue.Printf("<SEGMENT> Sending complete segment [ %s ]\n", name)
+			if strings.HasSuffix(base, ".ts") && (event.Has(fsnotify.Create) || event.Has(fsnotify.Write)) {
+				utils.Blue.Printf("<SEGMENT EVENT> %s %s\n", event.Op.String(), name)
 
 				// upload file
 				go func(filePath string) {
@@ -51,19 +51,16 @@ func DeployWatchdog(n *NodeClient, hlsDir string) error {
 
 			// trigger for final .m3u8 playlist file this is ready to send to Hub
 			if base == "stream.m3u8" && (event.Has(fsnotify.Create) || event.Has(fsnotify.Write)) {
-				// check its a valid file (kinda pointless but need to check)
-				if _, err := os.Stat(playlistPath); err != nil {
-					continue
+				if _, err := os.Stat(playlistPath); err == nil {
+					utils.Blue.Printf("<PLAYLIST EVENT> %s %s\n", event.Op.String(), playlistPath)
+
+					// upload file
+					go func(filePath string) {
+						if err := n.UploadFile(filePath); err != nil {
+							red.Println(err) // dont want to crash the pipeline on an upload error
+						}
+					}(playlistPath)
 				}
-
-				utils.Blue.Printf("<PLAYLIST> Sending complete playlist [ %s ]\n", playlistPath)
-
-				// upload file
-				go func(filePath string) {
-					if err := n.UploadFile(filePath); err != nil {
-						red.Println(err) // dont want to crash the pipeline on an upload error
-					}
-				}(playlistPath)
 
 				continue
 			}

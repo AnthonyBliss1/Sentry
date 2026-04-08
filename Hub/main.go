@@ -8,7 +8,10 @@ import (
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 )
 
-var hub network.Hub
+var (
+	hub    network.Hub
+	hlsDir string
+)
 
 func init() {
 	var err error
@@ -23,6 +26,11 @@ func init() {
 		log.Fatalf("Could not get hostname: %q", err)
 	}
 
+	hlsDir, err = utils.ValidateSaveDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	hub.LanIP = LanIP
 	hub.Hostname = hostName
 }
@@ -35,7 +43,7 @@ func main() {
 
 	// start WS server
 	utils.Blue.Println("> Starting FS...")
-	hub.StartFS()
+	hub.StartFS(hlsDir)
 
 	// start FS
 	utils.Blue.Println("> Starting WS...")

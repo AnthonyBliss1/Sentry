@@ -21,6 +21,7 @@ type Hub struct {
 
 	LanIP    net.IP
 	Hostname string
+	HLSDir   string
 	Mu       sync.Mutex
 }
 
@@ -47,19 +48,16 @@ func (h *Hub) StartWS() {
 	utils.Green.Println("[ Websocket Server listening on :8000 ]")
 }
 
-func (h *Hub) StartFS() {
+func (h *Hub) StartFS(hlsDir string) {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 
-	r.Post("/upload/{deviceID}/{fileName}", func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "deviceID") // grab the id from the qParam
-		fileName := chi.URLParam(r, "fileName")
+	// file uploads
+	r.Post("/upload/{deviceID}/{fileName}", FSHandler(hlsDir))
 
-		msg := fmt.Sprintf("Successfully Uploaded File [%s] for device: %s", fileName, id) // test msg
-
-		w.Write([]byte(msg)) // write msg
-	})
+	r.Get("/watch/{deviceID}", WatchHandler())
+	r.Handle("/hls/*", HLSFileServer(hlsDir))
 
 	// will probably allow the user to configure the port? not sure
 	// or use some obscure port

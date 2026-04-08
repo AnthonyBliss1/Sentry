@@ -48,8 +48,7 @@ func (s *Stream) Start(hlsDir string) error {
 
 	cmd := exec.Command(
 		"ffmpeg",
-		"-loglevel", "quiet",
-		"-nostats",
+		"-loglevel", "warning",
 		"-f", "v4l2",
 		"-framerate", "30",
 		"-video_size", "640x480",
@@ -58,10 +57,14 @@ func (s *Stream) Start(hlsDir string) error {
 		"-c:v", "libx264",
 		"-preset", "veryfast",
 		"-pix_fmt", "yuv420p",
+		"-g", "60",
+		"-keyint_min", "60",
+		"-sc_threshold", "0",
+		"-force_key_frames", "expr:gte(t,n_forced*2)",
 		"-f", "hls",
 		"-hls_time", "2",
 		"-hls_list_size", "6",
-		"-hls_flags", "delete_segments",
+		"-hls_flags", "delete_segments+temp_file+omit_endlist",
 		"-hls_segment_filename", segmentPattern,
 		playlistPath,
 	)
