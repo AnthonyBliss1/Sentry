@@ -1,6 +1,7 @@
 package network
 
 import (
+	"embed"
 	"html/template"
 	"net/http"
 	"path/filepath"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/go-chi/chi"
 )
+
+//go:embed templates/watch.html
+var templateFS embed.FS
+
+var watchTmpl = template.Must(template.ParseFS(templateFS, "templates/watch.html"))
 
 // Web Server Handlers
 // ~~~~~~~~~~~~~~~~~~~
@@ -19,8 +25,6 @@ type WatchPageData struct {
 }
 
 func WatchHandler() http.HandlerFunc {
-	tmpl := template.Must(template.ParseFiles("templates/watch.html"))
-
 	return func(w http.ResponseWriter, r *http.Request) {
 		deviceID := chi.URLParam(r, "deviceID")
 		if deviceID == "" {
@@ -34,7 +38,7 @@ func WatchHandler() http.HandlerFunc {
 			PlaylistURL: "/hls/" + deviceID + "/stream.m3u8",
 		}
 
-		if err := tmpl.Execute(w, data); err != nil {
+		if err := watchTmpl.Execute(w, data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
