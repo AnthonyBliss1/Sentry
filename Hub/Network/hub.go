@@ -56,7 +56,7 @@ func (h *Hub) StartFS(hlsDir string) {
 	// file uploads
 	r.Post("/upload/{deviceID}/{fileName}", FSHandler(hlsDir))
 
-	r.Get("/watch/{deviceID}", WatchHandler())
+	r.Get("/stream", StreamHandler(hlsDir))
 	r.Handle("/hls/*", HLSFileServer(hlsDir))
 
 	// will probably allow the user to configure the port? not sure

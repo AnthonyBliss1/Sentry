@@ -2,43 +2,72 @@ package network
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"github.com/go-chi/chi"
 )
 
-//go:embed templates/watch.html
+//go:embed templates/stream.html
 var templateFS embed.FS
 
-var watchTmpl = template.Must(template.ParseFS(templateFS, "templates/watch.html"))
+var streamTmpl = template.Must(template.ParseFS(templateFS, "templates/stream.html"))
 
 // Web Server Handlers
 // ~~~~~~~~~~~~~~~~~~~
 
-type WatchPageData struct {
-	Title       string
+type StreamPlayer struct {
 	DeviceID    string
+	Title       string
 	PlaylistURL string
 }
 
-func WatchHandler() http.HandlerFunc {
+type StreamPageData struct {
+	Title   string
+	Players []StreamPlayer
+}
+
+func StreamHandler(hlsDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		deviceID := chi.URLParam(r, "deviceID")
-		if deviceID == "" {
-			http.Error(w, "missing deviceID", http.StatusBadRequest)
-			return
+		entries, err := os.ReadDir(hlsDir)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to read hls directory: %q", err), http.StatusInternalServerError)
 		}
 
-		data := WatchPageData{
-			Title:       "Camera " + deviceID,
-			DeviceID:    deviceID,
-			PlaylistURL: "/hls/" + deviceID + "/stream.m3u8",
+		var players []StreamPlayer
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			deviceID := entry.Name()
+			playlistPath := filepath.Join(hlsDir, deviceID, "stream.m3u8")
+
+			if _, err := os.Stat(playlistPath); err != nil {
+				continue
+			}
+
+			players = append(players, StreamPlayer{
+				DeviceID:    deviceID,
+				Title:       "Camera " + deviceID,
+				PlaylistURL: "/hls/" + deviceID + "/stream.m3u8",
+			})
 		}
 
-		if err := watchTmpl.Execute(w, data); err != nil {
+		sort.Slice(players, func(i, j int) bool {
+			return players[i].DeviceID < players[j].DeviceID
+		})
+
+		data := StreamPageData{
+			Title:   "Sentry Dashboard",
+			Players: players,
+		}
+
+		if err := streamTmpl.Execute(w, data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
