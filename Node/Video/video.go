@@ -46,28 +46,18 @@ func (s *Stream) Start(hlsDir string) error {
 	segmentPattern := filepath.Join(hlsDir, "segment_%03d.ts")
 	playlistPath := filepath.Join(hlsDir, "stream.m3u8")
 
-	cmd := exec.Command(
-		"ffmpeg",
-		"-loglevel", "warning",
-		"-f", "v4l2",
-		"-framerate", "30",
-		"-video_size", "640x480",
-		"-input_format", "mjpeg",
-		"-i", "/dev/video0",
-		"-c:v", "libx264",
-		"-preset", "veryfast",
-		"-pix_fmt", "yuv420p",
-		"-g", "60",
-		"-keyint_min", "60",
-		"-sc_threshold", "0",
-		"-force_key_frames", "expr:gte(t,n_forced*2)",
-		"-f", "hls",
-		"-hls_time", "2",
-		"-hls_list_size", "6",
-		"-hls_flags", "delete_segments+temp_file+omit_endlist",
-		"-hls_segment_filename", segmentPattern,
+	pipeline := fmt.Sprintf(
+		`rpicam-vid -t 0 --width 640 --height 480 --framerate 15 --nopreview --inline --codec h264 -o - | `+
+			`ffmpeg -loglevel warning -fflags +genpts -r 30 -f h264 -i pipe:0 `+
+			`-c:v copy `+
+			`-f hls -hls_time 2 -hls_list_size 6 `+
+			`-hls_flags delete_segments+temp_file+omit_endlist `+
+			`-hls_segment_filename %q %q`,
+		segmentPattern,
 		playlistPath,
 	)
+
+	cmd := exec.Command("bash", "-lc", pipeline)
 
 	// need to output all these to log files but
 	// should be careful of the log build up
