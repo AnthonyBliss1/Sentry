@@ -41,13 +41,13 @@ func main() {
 		log.Fatal("LanIP and Hostname must be set")
 	}
 
-	// start WS server
+	// start TCP server
+	utils.Blue.Println("> Starting TCP...")
+	hub.StartTCP(hlsDir)
+
+	// start FS server
 	utils.Blue.Println("> Starting FS...")
 	hub.StartFS(hlsDir)
-
-	// start FS
-	utils.Blue.Println("> Starting WS...")
-	hub.StartWS()
 
 	// start mDNS server for service discovery
 	utils.Blue.Println("> Starting MDNS...")

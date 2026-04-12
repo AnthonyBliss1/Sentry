@@ -2,9 +2,8 @@ package video
 
 import (
 	"fmt"
-	"io"
+	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"syscall"
 )
@@ -42,28 +41,27 @@ func (s *Stream) Stop() error {
 	return nil
 }
 
-func (s *Stream) Start(hlsDir string) error {
-	segmentPattern := filepath.Join(hlsDir, "segment_%03d.ts")
-	playlistPath := filepath.Join(hlsDir, "stream.m3u8")
-
-	pipeline := fmt.Sprintf(
-		`rpicam-vid -t 0 --width 640 --height 480 --framerate 15 --nopreview --inline --codec h264 -o - | `+
-			`ffmpeg -loglevel warning -fflags +genpts -r 30 -f h264 -i pipe:0 `+
-			`-c:v copy `+
-			`-f hls -hls_time 2 -hls_list_size 6 `+
-			`-hls_flags delete_segments+temp_file+omit_endlist `+
-			`-hls_segment_filename %q %q`,
-		segmentPattern,
-		playlistPath,
+func (s *Stream) Start(hubAddr string) error {
+	// found this to be the best balance of quality and speed
+	// may toss --low-latency in there if necessary
+	cmd := exec.Command(
+		"rpicam-vid",
+		"-t", "0",
+		"--width", "640",
+		"--height", "480",
+		"--framerate", "15",
+		"--nopreview",
+		"--inline",
+		"--codec", "h264",
+		"--intra", "30",
+		"-o", hubAddr,
 	)
-
-	cmd := exec.Command("bash", "-lc", pipeline)
 
 	// need to output all these to log files but
 	// should be careful of the log build up
 	// for now just getting them out of the way
-	cmd.Stderr = io.Discard
-	cmd.Stdout = io.Discard
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %w", err)

@@ -53,7 +53,7 @@ func StreamHandler(hlsDir string) http.HandlerFunc {
 
 			players = append(players, StreamPlayer{
 				DeviceID:    deviceID,
-				Title:       "Camera " + deviceID,
+				Title:       deviceID,
 				PlaylistURL: "/hls/" + deviceID + "/stream.m3u8",
 			})
 		}

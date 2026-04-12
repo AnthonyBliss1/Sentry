@@ -13,10 +13,8 @@ import (
 )
 
 type Hub struct {
-	WS Websocket
-	FS FileServer
+	TCP TCPServer
 
-	wsMDNS *mdns.Server
 	fsMDNS *mdns.Server
 
 	LanIP    net.IP
@@ -28,34 +26,12 @@ type Hub struct {
 // Server Control Functions
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (h *Hub) StartWS() {
-	// need to implement the Gorilla hub model
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		// ServeWS(p.Hub, w, r)
-	})
-
-	h.WS = Websocket{&http.Server{Addr: h.LanIP.String() + ":8000", Handler: mux}}
-
-	go func() {
-		if err := h.WS.ListenAndServe(); err != nil {
-			utils.Red.Printf("Server Shutdown: %q\n", err)
-		}
-	}()
-
-	utils.Green.Println("[ Websocket Server listening on :8000 ]")
-}
-
 func (h *Hub) StartFS(hlsDir string) {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 
-	// file uploads
-	r.Post("/upload/{deviceID}/{fileName}", FSHandler(hlsDir))
-
+	// handle serving template and hls files on disk
 	r.Get("/stream", StreamHandler(hlsDir))
 	r.Handle("/hls/*", HLSFileServer(hlsDir))
 
@@ -63,10 +39,8 @@ func (h *Hub) StartFS(hlsDir string) {
 	// or use some obscure port
 	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 8080)
 
-	h.FS = FileServer{&http.Server{Addr: addr, Handler: r}}
-
 	go func() {
-		if err := h.FS.ListenAndServe(); err != nil {
+		if err := http.ListenAndServe(addr, r); err != nil {
 			utils.Red.Printf("Server Shutdown: %q\n", err)
 		}
 	}()
@@ -74,23 +48,47 @@ func (h *Hub) StartFS(hlsDir string) {
 	utils.Green.Println("[ File Server listening on :8080 ]")
 }
 
+func (h *Hub) StartTCP(hlsDir string) {
+	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 9000)
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		utils.Red.Printf("TCP ingest listen failed: %v\n", err)
+		return
+	}
+
+	h.TCP = TCPServer{listener: ln}
+
+	utils.Green.Println("[ TCP Ingest listening on :9000 ]")
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				utils.Red.Printf("TCP accept error: %v\n", err)
+				continue
+			}
+
+			h.TCP.wg.Add(1)
+			go func() {
+				defer h.TCP.wg.Done()
+				handleTCPStream(conn, hlsDir)
+			}()
+		}
+	}()
+}
+
 func (h *Hub) StartMDNS() {
 	var err error
 
 	info := []string{"Sentry Hub"}
 
-	wsService, _ := mdns.NewMDNSService(h.Hostname, "_Sentry-Hub-WS._tcp", "", "", 8000, []net.IP{h.LanIP}, info)
-	fsService, _ := mdns.NewMDNSService(h.Hostname, "_Sentry-Hub-FS._tcp", "", "", 8080, []net.IP{h.LanIP}, info)
+	tcpService, _ := mdns.NewMDNSService(h.Hostname, "_Sentry-Hub-TCP._tcp", "", "", 9000, []net.IP{h.LanIP}, info)
 
-	utils.Green.Println("[ MDNS Server advertising WSService on :8000 ]")
-	h.wsMDNS, err = mdns.NewServer(&mdns.Config{Zone: wsService})
+	utils.Green.Println("[ MDNS Server advertising TCPService on :9000 ]")
+	h.fsMDNS, err = mdns.NewServer(&mdns.Config{Zone: tcpService})
 	if err != nil {
-		utils.Red.Printf("WS MDNS Server Shutdown: %q\n", err)
-	}
-
-	utils.Green.Println("[ MDNS Server advertising FSService on :8080 ]")
-	h.fsMDNS, err = mdns.NewServer(&mdns.Config{Zone: fsService})
-	if err != nil {
-		utils.Red.Printf("FS MDNS Server Shutdown: %q\n", err)
+		utils.Red.Printf("TCP MDNS Server Shutdown: %q\n", err)
+		return
 	}
 }
