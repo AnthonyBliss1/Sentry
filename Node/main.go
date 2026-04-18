@@ -6,13 +6,11 @@ import (
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
-	video "github.com/anthonybliss1/Sentry/Node/Video"
 )
 
-var (
-	node   network.NodeClient
-	stream video.Stream
-)
+var node network.NodeClient
+
+// stream video.Stream
 
 func main() {
 	// TODO: implement these checks
@@ -31,34 +29,38 @@ func main() {
 
 	// find Hub services
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	foundServers := false
+	utils.Blue.Println("> Looking for Room Service...")
+	node.RoomServiceLookup()
 
-	for !foundServers {
-		if err := node.MDNSLookup(); err != nil {
-			log.Fatal(err)
-		}
+	utils.Blue.Println("> Fetching Concierge...")
+	if err := node.FetchConcierge(); err != nil {
+		log.Fatal(err)
+	}
 
-		node.Mu.Lock()
-		foundServers = node.TCP != (network.TCPServer{})
-		node.Mu.Unlock()
+	utils.Blue.Println("> Joining Room...")
+	if err := node.JoinRoom(); err != nil {
+		log.Fatal(err)
+	}
 
-		if !foundServers {
-			time.Sleep(500 * time.Millisecond)
-		}
+	time.Sleep(10 * time.Second)
+
+	utils.Blue.Println("> Leaving Room...")
+	if ok := node.LeaveRoom(); !ok {
+		utils.Red.Println("[ Failed to leave room! ]")
 	}
 
 	// start recording and creating segments
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	utils.Blue.Println("> Starting Video Stream...")
-	if err := stream.Start(node.TCP.URL); err != nil {
-		utils.Red.Print(err)
-	}
-
-	// test end
-	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	time.Sleep(120 * time.Second)
-
-	if err := stream.Stop(); err != nil {
-		utils.Red.Print(err)
-	}
+	//	utils.Blue.Println("> Starting Video Stream...")
+	//	if err := stream.Start(node.TCP.URL); err != nil {
+	//		utils.Red.Print(err)
+	//	}
+	//
+	//	// test end
+	//	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	//	time.Sleep(120 * time.Second)
+	//
+	//	if err := stream.Stop(); err != nil {
+	//		utils.Red.Print(err)
+	//	}
 }

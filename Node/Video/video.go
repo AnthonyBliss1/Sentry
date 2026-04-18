@@ -41,20 +41,19 @@ func (s *Stream) Stop() error {
 	return nil
 }
 
-func (s *Stream) Start(hubAddr string) error {
-	// found this to be the best balance of quality and speed
-	// may toss --low-latency in there if necessary
+func (s *Stream) Start(rtmpURL string) error {
 	cmd := exec.Command(
 		"rpicam-vid",
 		"-t", "0",
-		"--width", "640",
-		"--height", "480",
-		"--framerate", "15",
+		"--width", "1280",
+		"--height", "720",
+		"--framerate", "24",
+		"--bitrate", "2200000",
 		"--nopreview",
 		"--inline",
-		"--codec", "h264",
-		"--intra", "30",
-		"-o", hubAddr,
+		"--codec", "libav",
+		"--libav-format", "flv",
+		"-o", rtmpURL,
 	)
 
 	// need to output all these to log files but

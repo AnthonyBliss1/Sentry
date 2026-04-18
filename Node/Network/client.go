@@ -1,9 +1,14 @@
 package network
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 	video "github.com/anthonybliss1/Sentry/Node/Video"
@@ -11,21 +16,16 @@ import (
 )
 
 // service names to search for
-// TODO: Build out WS client
 const (
-	TCPService = "_Sentry-Hub-TCP._tcp"
+	RoomServiceLabel = "_Sentry-Hub-Room-Service._http"
 )
 
-type TCPServer struct {
-	URL      string
-	Hostname string
-	Addr     string
-	Port     int
-}
+// Room Service API discovered from MDNS
 
 type NodeClient struct {
-	TCP    TCPServer
-	Stream video.Stream
+	Concierge
+	RoomServiceAPI string
+	Stream         video.Stream
 
 	Mu sync.Mutex
 }
@@ -33,67 +33,66 @@ type NodeClient struct {
 // MDNS Lookups
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
-// keeping this wrapper function because i will add WS back
+func (n *NodeClient) RoomServiceLookup() {
+	for {
+		entriesCH := make(chan *mdns.ServiceEntry, 16)
 
-func (n *NodeClient) MDNSLookup() error {
-	n.Mu.Lock()
-	hasTCP := n.TCP != (TCPServer{})
-	n.Mu.Unlock()
+		mdns.Lookup(RoomServiceLabel, entriesCH)
+		close(entriesCH)
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-
-	if !hasTCP {
-		wg.Go(func() {
-			if err := n.lookupTCP(); err != nil {
-				errCh <- err
+		for entry := range entriesCH {
+			// frontline check
+			if !strings.Contains(entry.Name, RoomServiceLabel) || entry.Port != 8000 {
+				continue
 			}
-		})
+
+			// make sure there is a address
+			if entry.AddrV4 == nil {
+				continue
+			}
+
+			// build api url
+			url := fmt.Sprintf("http://%s:%d/room-service", entry.AddrV4.String(), entry.Port)
+
+			// first come first serve (for now, will change to hostname targeting i think later)
+			n.Mu.Lock()
+			if n.RoomServiceAPI == "" {
+				utils.Green.Printf("[ Stored API URL from <- %s ]\n", entry.Host)
+				n.RoomServiceAPI = url
+				n.Mu.Unlock()
+				return
+			}
+			n.Mu.Unlock()
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (n *NodeClient) FetchConcierge() error {
+	if n.RoomServiceAPI == "" {
+		return errors.New("no roomservice url set, cannot fetch concierge")
 	}
 
-	wg.Wait()
-	close(errCh)
+	resp, err := http.Get(n.RoomServiceAPI)
+	if err != nil {
+		return fmt.Errorf("failed to fetch concierge: %w", err)
+	}
+	defer resp.Body.Close()
 
-	for err := range errCh {
-		if err != nil {
-			return err
-		}
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read roomservice response: %w", err)
+	}
+
+	if err := json.Unmarshal(bodyBytes, &n.Concierge); err != nil {
+		return fmt.Errorf("failed to unmarshal concierge bytes: %w", err)
+	}
+
+	if n.Concierge != (Concierge{}) {
+		utils.Green.Println("[ Concierge Collected ]")
+		utils.Green.Println(n) // this will print out the n.Concierge data (will change because its confusing)
 	}
 
 	return nil
-}
-
-func (n *NodeClient) lookupTCP() error {
-	entriesCH := make(chan *mdns.ServiceEntry, 16)
-	errCH := make(chan error, 1)
-
-	go func() {
-		errCH <- mdns.Lookup(TCPService, entriesCH)
-		close(entriesCH)
-	}()
-
-	for entry := range entriesCH {
-		// frontline check
-		if !strings.Contains(entry.Name, TCPService) || entry.Port != 9000 {
-			continue
-		}
-
-		// make sure there is a address
-		if entry.AddrV4 == nil {
-			continue
-		}
-
-		tcp := TCPServer{Hostname: entry.Host, Addr: entry.AddrV4.String(), Port: entry.Port}
-		tcp.URL = fmt.Sprintf("tcp://%s:%d", tcp.Addr, tcp.Port)
-
-		// first come first serve (for now, will change to hostname targeting i think later)
-		n.Mu.Lock()
-		if n.TCP == (TCPServer{}) {
-			utils.Blue.Printf("[ Stored TCP Server - %s ]\n", tcp.Hostname)
-			n.TCP = tcp
-		}
-		n.Mu.Unlock()
-	}
-
-	return <-errCH
 }

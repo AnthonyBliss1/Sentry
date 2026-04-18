@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -41,17 +42,23 @@ func main() {
 		log.Fatal("LanIP and Hostname must be set")
 	}
 
-	// start TCP server
-	utils.Blue.Println("> Starting TCP...")
-	hub.StartTCP(hlsDir)
+	utils.Blue.Println("> Running livekit-server --dev...")
+	if err := hub.StartLKServer(); err != nil {
+		log.Fatal(err)
+	}
 
-	// start FS server
-	utils.Blue.Println("> Starting FS...")
-	hub.StartFS(hlsDir)
+	// setup LKRoom
+	utils.Blue.Println("> Creating LK Room...")
+	hub.SetRoom("Sentry-Hub", fmt.Sprintf("ws://%s:%d", hub.LanIP, 7880))
+
+	// start http server for sharing room info
+	utils.Blue.Println("> Starting Room Service API...")
+	hub.StartRoomService()
 
 	// start mDNS server for service discovery
 	utils.Blue.Println("> Starting MDNS...")
 	hub.StartMDNS()
 
+	// persist forever
 	select {}
 }

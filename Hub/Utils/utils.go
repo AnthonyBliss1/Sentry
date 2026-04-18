@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +16,18 @@ var (
 	Blue  = color.New(color.FgBlue)  // actions
 	Red   = color.New(color.FgRed)   // warnings
 )
+
+func GenerateAPIKey() (key string, err error) {
+	b := make([]byte, 32)
+
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+
+	key = "s-" + base64.RawURLEncoding.EncodeToString(b)
+
+	return key, nil
+}
 
 func LANIPv4() (net.IP, error) {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
