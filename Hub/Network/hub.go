@@ -1,76 +1,70 @@
 package network
 
 import (
-	"context"
+	"embed"
+	"encoding/json"
 	"fmt"
-	"io"
+	"html/template"
 	"net"
 	"net/http"
-	"os/exec"
 	"sync"
 
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/hashicorp/mdns"
-	"github.com/livekit/protocol/livekit"
-	lksdk "github.com/livekit/server-sdk-go/v2"
 )
+
+//go:embed templates/stream.html
+var templateFS embed.FS
+
+var watchTemplate = template.Must(template.ParseFS(templateFS, "templates/stream.html"))
 
 const (
 	RoomServiceLabel = "_Sentry-Hub-Room-Service._http"
 )
 
+type WatchPageData struct {
+	Title       string
+	WebRTCBase  string
+	DefaultPath string
+}
+
+type StreamsResponse struct {
+	Streams []string `json:"streams"`
+}
+
+type mediaMTXPathListResponse struct {
+	Items []struct {
+		Name string `json:"name"`
+	} `json:"items"`
+}
+
 type Hub struct {
 	Concierge
-	Room   *livekit.Room
 	rsMDNS *mdns.Server
 
 	Hostname string
 	LanIP    net.IP
 
-	LKServerCMD *exec.Cmd
-	Mu          sync.Mutex
+	Mu sync.Mutex
 }
 
 // Server Control Functions
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func (h *Hub) StartLKServer() error {
-	cmd := exec.Command("livekit-server",
-		"--dev",
-		"--bind", "0.0.0.0",
-	)
-
-	cmd.Stderr = io.Discard
-	cmd.Stdout = io.Discard
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h *Hub) SetRoom(roomName string, url string) (err error) {
-	h.Concierge = Concierge{RoomName: roomName, RoomURL: url, APIKey: "devkey", APISecret: "secret"}
-
-	roomClient := lksdk.NewRoomServiceClient(h.RoomURL, h.APIKey, h.APISecret)
-
-	h.Room, err = roomClient.CreateRoom(context.Background(), &livekit.CreateRoomRequest{Name: h.RoomName})
-	if err != nil {
-		return fmt.Errorf("failed to create livekit room: %w", err)
-	}
-
-	return nil
-}
 
 func (h *Hub) StartRoomService() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 
+	fs := http.FileServer(http.Dir("./static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+
 	r.Get("/room-service", h.RoomServiceHandler)
+	r.Get("/watch", h.WatchHandler)
+	r.Get("/api/streams", h.StreamsHandler)
+
 	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 8000)
 
 	go func() {
@@ -95,4 +89,64 @@ func (h *Hub) StartMDNS() {
 		utils.Red.Printf("TCP MDNS Server Shutdown: %q\n", err)
 		return
 	}
+}
+
+func (h *Hub) WatchHandler(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "cam"
+	}
+
+	data := WatchPageData{
+		Title:       "Sentry Command Center",
+		WebRTCBase:  h.WebRTCBase,
+		DefaultPath: path,
+	}
+
+	if err := watchTemplate.Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Hub) StreamsHandler(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", "http://127.0.0.1:9997/v3/paths/list", nil)
+	if err != nil {
+		http.Error(w, "failed to build MediaMTX request", http.StatusInternalServerError)
+		return
+	}
+
+	req.SetBasicAuth("sentryapi", "strongpassword")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "failed to query MediaMTX", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "MediaMTX returned non-200", http.StatusBadGateway)
+		return
+	}
+
+	var apiResp mediaMTXPathListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		http.Error(w, "failed to decode MediaMTX response", http.StatusInternalServerError)
+		return
+	}
+
+	streams := make([]string, 0, len(apiResp.Items))
+	for _, item := range apiResp.Items {
+		if item.Name != "" {
+			streams = append(streams, item.Name)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(StreamsResponse{
+		Streams: streams,
+	})
 }

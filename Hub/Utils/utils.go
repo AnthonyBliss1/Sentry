@@ -1,15 +1,23 @@
 package utils
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"context"
+	"embed"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 
+	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/flags"
+	"github.com/docker/compose/v5/pkg/api"
+	"github.com/docker/compose/v5/pkg/compose"
 	"github.com/fatih/color"
 )
+
+//go:embed docker-compose.yml mediamtx.yml
+var embeddedConfigs embed.FS
 
 var (
 	Green = color.New(color.FgGreen) // debug
@@ -17,16 +25,10 @@ var (
 	Red   = color.New(color.FgRed)   // warnings
 )
 
-func GenerateAPIKey() (key string, err error) {
-	b := make([]byte, 32)
-
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-
-	key = "s-" + base64.RawURLEncoding.EncodeToString(b)
-
-	return key, nil
+type Composer struct {
+	Service api.Compose
+	Project *types.Project
+	Ctx     context.Context
 }
 
 func LANIPv4() (net.IP, error) {
@@ -40,33 +42,58 @@ func LANIPv4() (net.IP, error) {
 	return localAddr.IP, nil
 }
 
-func ValidateSaveDir() (hlsDir string, err error) {
-	base, err := os.UserConfigDir()
+func writeEmbeddedConfigs() (string, error) {
+	workDir, err := os.MkdirTemp("", "sentry-hub-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to find User Config Dir: %w", err)
+		return "", fmt.Errorf("failed to create temp working dir: %w", err)
 	}
 
-	hlsDir = filepath.Join(base, "Sentry")
+	files := []string{"docker-compose.yml", "mediamtx.yml"}
 
-	// ensuring 'HLS' exists
-	if err := os.MkdirAll(hlsDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to make HLS dir: %w", err)
+	for _, name := range files {
+		data, err := embeddedConfigs.ReadFile(name)
+		if err != nil {
+			return "", fmt.Errorf("failed to read embedded %s: %w", name, err)
+		}
+
+		dst := filepath.Join(workDir, name)
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return "", fmt.Errorf("failed to write %s: %w", name, err)
+		}
 	}
 
-	return hlsDir, nil
+	return workDir, nil
 }
 
-func SaveFile(hlsDir string, deviceID string, fileName string, data []byte) error {
-	deviceDir := filepath.Join(hlsDir, deviceID)
-	filePath := filepath.Join(deviceDir, fileName)
+func CreateComposer() (Composer, error) {
+	ctx := context.Background()
 
-	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		return fmt.Errorf("failed to make device directory: %w", err)
+	workDir, err := writeEmbeddedConfigs()
+	if err != nil {
+		return Composer{}, err
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
-		return fmt.Errorf("failed to write file to server: %w", err)
+	dockerCLI, err := command.NewDockerCli()
+	if err != nil {
+		return Composer{}, fmt.Errorf("failed to create new docker cli: %w", err)
 	}
 
-	return nil
+	if err := dockerCLI.Initialize(&flags.ClientOptions{}); err != nil {
+		return Composer{}, fmt.Errorf("failed to initialize dockerCLI: %w", err)
+	}
+
+	service, err := compose.NewComposeService(dockerCLI)
+	if err != nil {
+		return Composer{}, fmt.Errorf("failed to create compose service: %w", err)
+	}
+
+	project, err := service.LoadProject(ctx, api.ProjectLoadOptions{
+		ConfigPaths: []string{filepath.Join(workDir, "docker-compose.yml")},
+		ProjectName: "sentry-hub-mediamtx",
+	})
+	if err != nil {
+		return Composer{}, fmt.Errorf("failed to load project with yml file: %w", err)
+	}
+
+	return Composer{service, project, ctx}, nil
 }

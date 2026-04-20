@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"time"
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
@@ -37,30 +38,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	utils.Blue.Println("> Joining Room...")
-	if err := node.JoinRoom(); err != nil {
-		log.Fatal(err)
-	}
-
-	time.Sleep(10 * time.Second)
-
-	utils.Blue.Println("> Leaving Room...")
-	if ok := node.LeaveRoom(); !ok {
-		utils.Red.Println("[ Failed to leave room! ]")
+	deviceID, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("failed to get hostname: %v", err)
 	}
 
 	// start recording and creating segments
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	//	utils.Blue.Println("> Starting Video Stream...")
-	//	if err := stream.Start(node.TCP.URL); err != nil {
-	//		utils.Red.Print(err)
-	//	}
-	//
-	//	// test end
-	//	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	//	time.Sleep(120 * time.Second)
-	//
-	//	if err := stream.Stop(); err != nil {
-	//		utils.Red.Print(err)
-	//	}
+	utils.Blue.Println("> Publishing Video Stream...")
+	stream, err := node.PublishStream(deviceID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// test end
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	time.Sleep(120 * time.Second)
+
+	if err := stream.Stop(); err != nil {
+		utils.Red.Print(err)
+	}
 }

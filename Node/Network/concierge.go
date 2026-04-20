@@ -3,19 +3,47 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 
-	lksdk "github.com/livekit/server-sdk-go"
+	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 )
 
 // LiveKit Server credentials received from API
 
 type Concierge struct {
-	RoomURL   string `json:"url"`
-	APIKey    string `json:"api-key"`
-	APISecret string `json:"api-secret"`
-	RoomName  string `json:"room-name"`
+	RTSPPublishBase string `json:"rtsp_publish_base"`
+	WebRTCBase      string `json:"webrtc_base"`
+	HLSBase         string `json:"hls_base"`
+}
 
-	room *lksdk.Room
+type Stream struct {
+	rpiCmd    *exec.Cmd
+	ffmpegCmd *exec.Cmd
+}
+
+func (s *Stream) Stop() error {
+	var firstErr error
+
+	if s.rpiCmd != nil && s.rpiCmd.Process != nil {
+		if err := s.rpiCmd.Process.Kill(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.ffmpegCmd != nil && s.ffmpegCmd.Process != nil {
+		if err := s.ffmpegCmd.Process.Kill(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	if s.rpiCmd != nil {
+		s.rpiCmd.Process.Wait()
+	}
+	if s.ffmpegCmd != nil {
+		s.ffmpegCmd.Process.Wait()
+	}
+
+	return firstErr
 }
 
 func (c *Concierge) String() string {
@@ -24,25 +52,68 @@ func (c *Concierge) String() string {
 	return string(b)
 }
 
-func (c *Concierge) JoinRoom() (err error) {
-	c.room, err = lksdk.ConnectToRoom(c.RoomURL, lksdk.ConnectInfo{
-		APIKey:              c.APIKey,
-		APISecret:           c.APISecret,
-		RoomName:            c.RoomName,
-		ParticipantIdentity: "Gabagul",
-	}, nil) // no callback since the node is only a publisher, dont need to sub to participant's tracks when joining the room
+func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
+	if c.RTSPPublishBase == "" {
+		return Stream{}, fmt.Errorf("rtsp publish base is empty")
+	}
+
+	publishURL := fmt.Sprintf("%s/%s", c.RTSPPublishBase, deviceID)
+
+	rpiCmd := exec.Command(
+		"rpicam-vid",
+		"-t", "0",
+		"--nopreview",
+		"--width", "1280",
+		"--height", "720",
+		"--framerate", "15",
+		"--bitrate", "1200000",
+		"--codec", "h264",
+		"--profile", "baseline",
+		"--level", "4",
+		"--intra", "15",
+		"--inline",
+		"--flush",
+		"-o", "-",
+	)
+
+	rpiStdout, err := rpiCmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to join room: %w", err)
+		return Stream{}, fmt.Errorf("failed to create rpicam stdout pipe: %w", err)
+	}
+	rpiCmd.Stderr = os.Stderr
+
+	ffmpegCmd := exec.Command(
+		"ffmpeg",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-fflags", "nobuffer",
+		"-f", "h264",
+		"-i", "pipe:0",
+		"-an",
+		"-c:v", "copy",
+		"-f", "rtsp",
+		"-rtsp_transport", "tcp",
+		"-pkt_size", "1200",
+		publishURL,
+	)
+	ffmpegCmd.Stdin = rpiStdout
+	ffmpegCmd.Stdout = os.Stdout
+	ffmpegCmd.Stderr = os.Stderr
+
+	if err := rpiCmd.Start(); err != nil {
+		return Stream{}, fmt.Errorf("failed to start rpicam-vid: %w", err)
 	}
 
-	return nil
-}
-
-func (c *Concierge) LeaveRoom() (ok bool) {
-	if c.room == nil {
-		return false
+	if err := ffmpegCmd.Start(); err != nil {
+		_ = rpiCmd.Process.Kill()
+		_ = rpiCmd.Wait()
+		return Stream{}, fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
-	c.room.Disconnect()
-	return true
+	utils.Green.Printf("[ Publishing -> %s ]\n", publishURL)
+
+	return Stream{
+		rpiCmd:    rpiCmd,
+		ffmpegCmd: ffmpegCmd,
+	}, nil
 }

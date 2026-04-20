@@ -1,18 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	network "github.com/anthonybliss1/Sentry/Hub/Network"
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
+	"github.com/docker/compose/v5/pkg/api"
 )
 
-var (
-	hub    network.Hub
-	hlsDir string
-)
+var hub network.Hub
 
 func init() {
 	var err error
@@ -27,29 +28,43 @@ func init() {
 		log.Fatalf("Could not get hostname: %q", err)
 	}
 
-	hlsDir, err = utils.ValidateSaveDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	hub.LanIP = LanIP
 	hub.Hostname = hostName
 }
 
 func main() {
-	// safeguard against potential empty fields
 	if hub.LanIP.String() == "" || hub.Hostname == "" {
 		log.Fatal("LanIP and Hostname must be set")
 	}
 
-	utils.Blue.Println("> Running livekit-server --dev...")
-	if err := hub.StartLKServer(); err != nil {
+	// need to set ip env var for mediamtx docker container
+	if err := os.Setenv("LAN_IP", hub.LanIP.String()); err != nil {
 		log.Fatal(err)
 	}
 
-	// setup LKRoom
-	utils.Blue.Println("> Creating LK Room...")
-	hub.SetRoom("Sentry-Hub", fmt.Sprintf("ws://%s:%d", hub.LanIP, 7880))
+	// create composer
+	composer, err := utils.CreateComposer()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// start the composer
+	utils.Blue.Println("> Starting MediaMTX container...")
+	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{}); err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+	}()
+
+	// context that is cancelled on ctrl+c, sigTerm, or sigKill
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	defer stop()
+
+	hub.Concierge = network.Concierge{
+		RTSPPublishBase: fmt.Sprintf("rtsp://%s:8554", hub.LanIP),
+		WebRTCBase:      fmt.Sprintf("http://%s:8889", hub.LanIP),
+		HLSBase:         fmt.Sprintf("http://%s:8888", hub.LanIP),
+	}
 
 	// start http server for sharing room info
 	utils.Blue.Println("> Starting Room Service API...")
@@ -59,6 +74,12 @@ func main() {
 	utils.Blue.Println("> Starting MDNS...")
 	hub.StartMDNS()
 
-	// persist forever
-	select {}
+	// wait for ctrl+c
+	<-ctx.Done() // blocking
+	utils.Blue.Println("\n> Taking down MediaMTX container...")
+	if err := composer.Service.Down(composer.Ctx, composer.Project.Name, api.DownOptions{Images: "all"}); err != nil {
+		utils.Red.Println(err)
+	}
+
+	utils.Green.Println("[ Program exited gracefully ]")
 }

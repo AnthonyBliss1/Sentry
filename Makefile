@@ -20,7 +20,7 @@ dirs:
 	@mkdir -p $(HUB_BUILD_DIR) $(NODE_BUILD_DIR)
 
 hub: dirs
-	cd $(HUB_DIR) && GOOS=linux GOARCH=arm64 go build -o ../$(HUB_BUILD_DIR)/$(HUB_BINARY)
+	cd $(HUB_DIR) && GOOS=darwin GOARCH=arm64 go build -o ../$(HUB_BUILD_DIR)/$(HUB_BINARY)
 	scp $(HUB_BUILD_DIR)/$(HUB_BINARY) $(HUB_DEVICE):~
 
 node: dirs

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
-	video "github.com/anthonybliss1/Sentry/Node/Video"
 	"github.com/hashicorp/mdns"
 )
 
@@ -25,7 +24,7 @@ const (
 type NodeClient struct {
 	Concierge
 	RoomServiceAPI string
-	Stream         video.Stream
+	Stream         Stream
 
 	Mu sync.Mutex
 }

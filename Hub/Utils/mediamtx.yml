@@ -1,0 +1,23 @@
+api: yes
+apiAddress: :9997
+
+rtspTransports: [tcp]
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+
+  - user: sentryapi
+    pass: strongpassword
+    ips: []
+    permissions:
+      - action: api
+
+paths:
+  all_others:

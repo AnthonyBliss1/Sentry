@@ -6,16 +6,15 @@ import (
 )
 
 type Concierge struct {
-	RoomURL   string `json:"url"`
-	APIKey    string `json:"api-key"`
-	APISecret string `json:"api-secret"`
-	RoomName  string `json:"room-name"`
+	RTSPPublishBase string `json:"rtsp_publish_base"`
+	WebRTCBase      string `json:"webrtc_base"`
+	HLSBase         string `json:"hls_base"`
 }
 
 func (c *Concierge) RoomServiceHandler(w http.ResponseWriter, r *http.Request) {
 	// quick check
-	if c.RoomURL == "" {
-		http.Error(w, "concierge not set - empty url", http.StatusInternalServerError)
+	if c.RTSPPublishBase == "" || c.WebRTCBase == "" || c.HLSBase == "" {
+		http.Error(w, "concierge not set - empty field", http.StatusInternalServerError)
 		return
 	}
 
@@ -26,5 +25,6 @@ func (c *Concierge) RoomServiceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// just sharing the room information via concierge
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 }
