@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	deploy "github.com/anthonybliss1/Sentry/Hub/Deploy"
 	network "github.com/anthonybliss1/Sentry/Hub/Network"
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 	"github.com/docker/compose/v5/pkg/api"
@@ -33,6 +35,20 @@ func init() {
 }
 
 func main() {
+	d := flag.Bool("deploy", false, "creates systemD or launchD file depending on OS")
+
+	flag.Parse()
+
+	if *d {
+		if err := deploy.DeployHub(); err != nil {
+			utils.Red.Printf("failed to deploy hub: %q\n", err)
+			return
+		}
+
+		utils.Blue.Println("\nSentry Hub successfully deployed!")
+		return
+	}
+
 	if hub.LanIP.String() == "" || hub.Hostname == "" {
 		log.Fatal("LanIP and Hostname must be set")
 	}
