@@ -69,8 +69,6 @@ func main() {
 	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{}); err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-	}()
 
 	// context that is cancelled on ctrl+c, sigTerm, or sigKill
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)

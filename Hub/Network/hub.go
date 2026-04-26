@@ -15,10 +15,10 @@ import (
 	"github.com/hashicorp/mdns"
 )
 
-//go:embed templates/stream.html
+//go:embed templates/watch.html
 var templateFS embed.FS
 
-var watchTemplate = template.Must(template.ParseFS(templateFS, "templates/stream.html"))
+var watchTemplate = template.Must(template.ParseFS(templateFS, "templates/watch.html"))
 
 const (
 	RoomServiceLabel = "_Sentry-Hub-Room-Service._http"
