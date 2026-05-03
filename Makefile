@@ -27,5 +27,9 @@ node: dirs
 	cd $(NODE_DIR) && GOOS=linux GOARCH=arm GOARM=7 go build -o ../$(NODE_BUILD_DIR)/$(NODE_BINARY)
 	scp $(NODE_BUILD_DIR)/$(NODE_BINARY) $(NODE_DEVICE):~
 
+local-hub: dirs 
+	cd $(HUB_DIR) && go build -o ../$(HUB_BUILD_DIR)/$(HUB_BINARY)
+	./$(HUB_BUILD_DIR)/$(HUB_BINARY)
+	
 clean:
 	rm -rf build

@@ -2,12 +2,10 @@ package network
 
 import (
 	"embed"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
 	"net/http"
-	"sync"
 
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 	"github.com/go-chi/chi"
@@ -21,39 +19,25 @@ var templateFS embed.FS
 var watchTemplate = template.Must(template.ParseFS(templateFS, "templates/watch.html"))
 
 const (
-	RoomServiceLabel = "_Sentry-Hub-Room-Service._http"
+	ConciergeServiceLabel = "_Sentry-Hub-Concierge-Service._http"
+	CommanderServiceLabel = "_Sentry-Hub-Commander-Service._ws"
 )
-
-type WatchPageData struct {
-	Title       string
-	WebRTCBase  string
-	DefaultPath string
-}
-
-type StreamsResponse struct {
-	Streams []string `json:"streams"`
-}
-
-type mediaMTXPathListResponse struct {
-	Items []struct {
-		Name string `json:"name"`
-	} `json:"items"`
-}
 
 type Hub struct {
 	Concierge
-	rsMDNS *mdns.Server
+	Commander
+
+	httpMDNS *mdns.Server
+	wsMDNS   *mdns.Server
 
 	Hostname string
 	LanIP    net.IP
-
-	Mu sync.Mutex
 }
 
 // Server Control Functions
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (h *Hub) StartRoomService() {
+func (h *Hub) StartConciergeService() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -69,11 +53,33 @@ func (h *Hub) StartRoomService() {
 
 	go func() {
 		if err := http.ListenAndServe(addr, r); err != nil {
-			utils.Red.Printf("RS Server Shutdown: %q\n", err)
+			utils.Red.Printf("HTTP Server Shutdown: %q\n", err)
 		}
 	}()
 
-	utils.Green.Printf("[ Room Service listening on :%d ]\n", 8000)
+	utils.Green.Printf("[ Concierge Service listening on :%d ]\n", 8000)
+}
+
+func (h *Hub) StartCommanderService() {
+	go h.RunCommander()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", h.ServeWS)
+
+	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 9000)
+
+	ws := http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := ws.ListenAndServe(); err != nil {
+			utils.Red.Printf("WebSocket Server Shutdown: %q\n", err)
+		}
+	}()
+
+	utils.Green.Printf("[ Commander Service listening on :%d ]\n", 9000)
 }
 
 func (h *Hub) StartMDNS() {
@@ -81,72 +87,21 @@ func (h *Hub) StartMDNS() {
 
 	info := []string{"Sentry Hub"}
 
-	tcpService, _ := mdns.NewMDNSService(h.Hostname, RoomServiceLabel, "", "", 8000, []net.IP{h.LanIP}, info)
+	httpService, _ := mdns.NewMDNSService(h.Hostname, ConciergeServiceLabel, "", "", 8000, []net.IP{h.LanIP}, info)
+	wsService, _ := mdns.NewMDNSService(h.Hostname, CommanderServiceLabel, "", "", 9000, []net.IP{h.LanIP}, info)
 
-	utils.Green.Println("[ MDNS Server advertising Room Service on :8000 ]")
-	h.rsMDNS, err = mdns.NewServer(&mdns.Config{Zone: tcpService})
+	utils.Green.Println("[ MDNS Server advertising Concierge Service on :8000 ]")
+	utils.Green.Println("[ MDNS Server advertising Commander Service on :9000 ]")
+
+	h.httpMDNS, err = mdns.NewServer(&mdns.Config{Zone: httpService})
 	if err != nil {
-		utils.Red.Printf("TCP MDNS Server Shutdown: %q\n", err)
+		utils.Red.Printf("HTTP MDNS Server Shutdown: %q\n", err)
 		return
 	}
-}
 
-func (h *Hub) WatchHandler(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	if path == "" {
-		path = "cam"
-	}
-
-	data := WatchPageData{
-		Title:       "Sentry Command Center",
-		WebRTCBase:  h.WebRTCBase,
-		DefaultPath: path,
-	}
-
-	if err := watchTemplate.Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func (h *Hub) StreamsHandler(w http.ResponseWriter, r *http.Request) {
-	client := &http.Client{}
-
-	req, err := http.NewRequest("GET", "http://127.0.0.1:9997/v3/paths/list", nil)
+	h.wsMDNS, err = mdns.NewServer(&mdns.Config{Zone: wsService})
 	if err != nil {
-		http.Error(w, "failed to build MediaMTX request", http.StatusInternalServerError)
+		utils.Red.Printf("WebSocket MDNS Server Shutdown: %q\n", err)
 		return
 	}
-
-	req.SetBasicAuth("sentryapi", "strongpassword")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "failed to query MediaMTX", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		http.Error(w, "MediaMTX returned non-200", http.StatusBadGateway)
-		return
-	}
-
-	var apiResp mediaMTXPathListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		http.Error(w, "failed to decode MediaMTX response", http.StatusInternalServerError)
-		return
-	}
-
-	streams := make([]string, 0, len(apiResp.Items))
-	for _, item := range apiResp.Items {
-		if item.Name != "" {
-			streams = append(streams, item.Name)
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(StreamsResponse{
-		Streams: streams,
-	})
 }

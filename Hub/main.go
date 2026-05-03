@@ -70,8 +70,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// context that is cancelled on ctrl+c, sigTerm, or sigKill
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	// context that is cancelled on ctrl+c, sigTerm
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	hub.Concierge = network.Concierge{
@@ -81,8 +81,12 @@ func main() {
 	}
 
 	// start http server for sharing room info
-	utils.Blue.Println("> Starting Room Service API...")
-	hub.StartRoomService()
+	utils.Blue.Println("> Starting Concierge Service...")
+	hub.StartConciergeService()
+
+	// start ws server for delivering commands to camera
+	utils.Blue.Println("> Starting Commander Service...")
+	hub.StartCommanderService()
 
 	// start mDNS server for service discovery
 	utils.Blue.Println("> Starting MDNS...")

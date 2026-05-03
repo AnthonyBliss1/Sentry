@@ -3,10 +3,12 @@ module github.com/anthonybliss1/Sentry/Hub
 go 1.26.1
 
 require (
+	github.com/compose-spec/compose-go/v2 v2.10.2
 	github.com/docker/cli v29.4.0+incompatible
 	github.com/docker/compose/v5 v5.1.3
 	github.com/fatih/color v1.19.0
 	github.com/go-chi/chi v1.5.5
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/hashicorp/mdns v1.0.6
 )
 
@@ -19,7 +21,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
-	github.com/compose-spec/compose-go/v2 v2.10.2 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/containerd/containerd/api v1.10.0 // indirect
 	github.com/containerd/containerd/v2 v2.2.3 // indirect
