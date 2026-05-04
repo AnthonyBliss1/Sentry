@@ -16,32 +16,33 @@ import (
 
 // service names to search for
 const (
-	RoomServiceLabel = "_Sentry-Hub-Room-Service._http"
+	ConciergeServiceLabel = "_Sentry-Hub-Concierge-Service._http"
+	CommanderServiceLabel = "_Sentry-Hub-Commander-Service._ws"
 )
 
 // Room Service API discovered from MDNS
 
 type NodeClient struct {
 	Concierge
-	RoomServiceAPI string
-	Stream         Stream
+	Commander
 
-	Mu sync.Mutex
+	Stream Stream
+	Mu     sync.Mutex
 }
 
 // MDNS Lookups
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
-func (n *NodeClient) RoomServiceLookup() {
+func (n *NodeClient) ConciergeServiceLookup() {
 	for {
 		entriesCH := make(chan *mdns.ServiceEntry, 16)
 
-		mdns.Lookup(RoomServiceLabel, entriesCH)
+		mdns.Lookup(ConciergeServiceLabel, entriesCH)
 		close(entriesCH)
 
 		for entry := range entriesCH {
 			// frontline check
-			if !strings.Contains(entry.Name, RoomServiceLabel) || entry.Port != 8000 {
+			if !strings.Contains(entry.Name, ConciergeServiceLabel) || entry.Port != 8000 {
 				continue
 			}
 
@@ -55,9 +56,45 @@ func (n *NodeClient) RoomServiceLookup() {
 
 			// first come first serve (for now, will change to hostname targeting i think later)
 			n.Mu.Lock()
-			if n.RoomServiceAPI == "" {
+			if n.roomServiceURL == "" {
 				utils.Green.Printf("[ Stored API URL from <- %s ]\n", entry.Host)
-				n.RoomServiceAPI = url
+				n.roomServiceURL = url
+				n.Mu.Unlock()
+				return
+			}
+			n.Mu.Unlock()
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (n *NodeClient) CommanderServiceLookup() {
+	for {
+		entriesCH := make(chan *mdns.ServiceEntry, 16)
+
+		mdns.Lookup(CommanderServiceLabel, entriesCH)
+		close(entriesCH)
+
+		for entry := range entriesCH {
+			// frontline check
+			if !strings.Contains(entry.Name, CommanderServiceLabel) || entry.Port != 9000 {
+				continue
+			}
+
+			// make sure there is a address
+			if entry.AddrV4 == nil {
+				continue
+			}
+
+			// build ws url
+			url := fmt.Sprintf("ws://%s:%d/ws", entry.AddrV4.String(), entry.Port)
+
+			// first come first serve (for now, will change to hostname targeting i think later)
+			n.Mu.Lock()
+			if n.CommanderServiceURL == "" {
+				utils.Green.Printf("[ Stored WS URL from <- %s ]\n", entry.Host)
+				n.CommanderServiceURL = url
 				n.Mu.Unlock()
 				return
 			}
@@ -69,11 +106,11 @@ func (n *NodeClient) RoomServiceLookup() {
 }
 
 func (n *NodeClient) FetchConcierge() error {
-	if n.RoomServiceAPI == "" {
+	if n.roomServiceURL == "" {
 		return errors.New("no roomservice url set, cannot fetch concierge")
 	}
 
-	resp, err := http.Get(n.RoomServiceAPI)
+	resp, err := http.Get(n.roomServiceURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch concierge: %w", err)
 	}
@@ -91,6 +128,8 @@ func (n *NodeClient) FetchConcierge() error {
 	if n.Concierge != (Concierge{}) {
 		utils.Green.Println("[ Concierge Collected ]")
 		utils.Green.Println(n) // this will print out the n.Concierge data (will change because its confusing)
+	} else {
+		return errors.New("nil concierge")
 	}
 
 	return nil

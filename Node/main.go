@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"os"
-	"time"
+	"sync"
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
@@ -22,21 +22,29 @@ func main() {
 	// log.Fatal(err)
 	// }
 
-	// validate dependencies (FFMpeg? and camera libs)
-	//
-	// if err := CheckDeps(); err != nil {
-	// log.Fatal(err)
-	// }
-
 	// find Hub services
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	utils.Blue.Println("> Looking for Room Service...")
-	node.RoomServiceLookup()
+	var wg sync.WaitGroup
+
+	utils.Blue.Println("> Looking for Concierge Service...")
+	utils.Blue.Println("> Looking for Commander Service...")
+	wg.Go(node.ConciergeServiceLookup)
+	wg.Go(node.CommanderServiceLookup)
+
+	wg.Wait()
 
 	utils.Blue.Println("> Fetching Concierge...")
 	if err := node.FetchConcierge(); err != nil {
 		log.Fatal(err)
 	}
+
+	// background task to continue listening to ws
+	utils.Blue.Println("> Dialing Commander...")
+	go func() {
+		if err := node.DialCommander(); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	deviceID, err := os.Hostname()
 	if err != nil {
@@ -46,16 +54,20 @@ func main() {
 	// start recording and creating segments
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	utils.Blue.Println("> Publishing Video Stream...")
-	stream, err := node.PublishStream(deviceID)
-	if err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		_, err = node.PublishStream(deviceID)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	select {} // block forever
 
 	// test end
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	time.Sleep(120 * time.Second)
-
-	if err := stream.Stop(); err != nil {
-		utils.Red.Print(err)
-	}
+	//	time.Sleep(120 * time.Second)
+	//
+	//	if err := stream.Stop(); err != nil {
+	//		utils.Red.Print(err)
+	//	}
 }

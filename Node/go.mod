@@ -4,6 +4,7 @@ go 1.25.3
 
 require (
 	github.com/fatih/color v1.19.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/mdns v1.0.6
 )
 

@@ -25,7 +25,7 @@ const (
 
 type Hub struct {
 	Concierge
-	Commander
+	*Commander
 
 	httpMDNS *mdns.Server
 	wsMDNS   *mdns.Server
@@ -61,12 +61,15 @@ func (h *Hub) StartConciergeService() {
 }
 
 func (h *Hub) StartCommanderService() {
+	h.Commander = NewCommander()
+
 	go h.RunCommander()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", h.ServeWS)
 
 	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 9000)
+	h.wsURL = fmt.Sprintf("ws://%s/ws", addr)
 
 	ws := http.Server{
 		Addr:    addr,

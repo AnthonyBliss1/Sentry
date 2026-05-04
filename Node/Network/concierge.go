@@ -3,7 +3,7 @@ package network
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
@@ -15,6 +15,8 @@ type Concierge struct {
 	RTSPPublishBase string `json:"rtsp_publish_base"`
 	WebRTCBase      string `json:"webrtc_base"`
 	HLSBase         string `json:"hls_base"`
+
+	roomServiceURL string // not exportable
 }
 
 type Stream struct {
@@ -80,7 +82,7 @@ func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
 	if err != nil {
 		return Stream{}, fmt.Errorf("failed to create rpicam stdout pipe: %w", err)
 	}
-	rpiCmd.Stderr = os.Stderr
+	rpiCmd.Stderr = io.Discard
 
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
@@ -97,16 +99,16 @@ func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
 		publishURL,
 	)
 	ffmpegCmd.Stdin = rpiStdout
-	ffmpegCmd.Stdout = os.Stdout
-	ffmpegCmd.Stderr = os.Stderr
+	ffmpegCmd.Stdout = io.Discard
+	ffmpegCmd.Stderr = io.Discard
 
 	if err := rpiCmd.Start(); err != nil {
 		return Stream{}, fmt.Errorf("failed to start rpicam-vid: %w", err)
 	}
 
 	if err := ffmpegCmd.Start(); err != nil {
-		_ = rpiCmd.Process.Kill()
-		_ = rpiCmd.Wait()
+		rpiCmd.Process.Kill()
+		rpiCmd.Wait()
 		return Stream{}, fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 

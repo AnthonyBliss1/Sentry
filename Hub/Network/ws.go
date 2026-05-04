@@ -13,30 +13,38 @@ var upgrader = websocket.Upgrader{
 }
 
 type Message struct {
-	Recipient string `json:"recipient"`
+	Recipient string `json:"recipient"` // this will be the hostname for the intended node
 	Action    string `json:"action"`
-
-	ConnectedClients map[*Client]bool `json:"connected_clients"`
 }
 
 // Commander
 // ~~~~~~~~~~~~~~
 
 type Commander struct {
-	Clients    map[*Client]bool
+	Nodes      map[*Client]bool
 	broadcast  chan Message
 	register   chan *Client
 	unregister chan *Client
 	shutdown   chan struct{}
 }
 
+func NewCommander() *Commander {
+	return &Commander{
+		Nodes:      make(map[*Client]bool),
+		broadcast:  make(chan Message),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		shutdown:   make(chan struct{}),
+	}
+}
+
 func (cd *Commander) Broadcast(msg Message) {
-	for client := range cd.Clients {
+	for client := range cd.Nodes {
 		select {
-		case client.Send <- msg:
-		default:
+		case client.Send <- msg: // send msg
+		default: // if closed channel
 			close(client.Send)
-			delete(cd.Clients, client)
+			delete(cd.Nodes, client)
 		}
 	}
 }
@@ -45,14 +53,12 @@ func (cd *Commander) RunCommander() {
 	for {
 		select {
 		case client := <-cd.register:
-			cd.Clients[client] = true
-			cd.Broadcast(Message{Action: "new-connection", ConnectedClients: cd.Clients})
+			cd.Nodes[client] = true
 
 		case client := <-cd.unregister:
-			if _, ok := cd.Clients[client]; ok {
-				delete(cd.Clients, client)
+			if _, ok := cd.Nodes[client]; ok {
+				delete(cd.Nodes, client)
 				close(client.Send)
-				cd.Broadcast(Message{Action: "closed-connection", ConnectedClients: cd.Clients})
 			}
 
 		case msg := <-cd.broadcast:
@@ -70,7 +76,7 @@ func (cd *Commander) ServeWS(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error upgrading Http to WS", "Error", err)
 		return
 	}
-	client := &Client{Commander: *cd, Conn: conn, Send: make(chan Message, 256)}
+	client := &Client{Commander: cd, Conn: conn, Send: make(chan Message, 256)}
 	client.register <- client
 
 	go client.writePump()
@@ -87,11 +93,9 @@ const (
 )
 
 type Client struct {
-	Commander
-
-	Hostname string
-	Conn     *websocket.Conn
-	Send     chan Message
+	*Commander
+	Conn *websocket.Conn
+	Send chan Message
 }
 
 func (c *Client) readPump() {

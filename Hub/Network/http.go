@@ -9,12 +9,15 @@ type Concierge struct {
 	RTSPPublishBase string `json:"rtsp_publish_base"`
 	WebRTCBase      string `json:"webrtc_base"`
 	HLSBase         string `json:"hls_base"`
+
+	wsURL string // private for watch template
 }
 
 type WatchPageData struct {
-	Title       string
-	WebRTCBase  string
-	DefaultPath string
+	Title        string
+	WebRTCBase   string
+	DefaultPath  string
+	WebSocketURL string
 }
 
 type StreamsResponse struct {
@@ -52,9 +55,10 @@ func (c *Concierge) WatchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := WatchPageData{
-		Title:       "Sentry Command Center",
-		WebRTCBase:  c.WebRTCBase,
-		DefaultPath: path,
+		Title:        "Sentry Command Center",
+		WebRTCBase:   c.WebRTCBase,
+		DefaultPath:  path,
+		WebSocketURL: c.wsURL,
 	}
 
 	if err := watchTemplate.Execute(w, data); err != nil {

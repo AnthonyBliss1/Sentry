@@ -101,7 +101,23 @@
 
   <script>
     const videosEl = document.getElementById("videos");
-  
+
+    const socket = new WebSocket("{{.WebSocketURL}}");
+
+    // test out the ws by sending a stop message on connect
+    socket.onopen = (event) => {
+      const data = {
+        recipient: "bedroom-cam",
+        action: "Stop"
+      };
+
+      socket.send(JSON.stringify(data))
+    };
+
+    socket.onmessage = (event) => {
+      console.log("received from server:", event.data);
+    };
+
     let currentKey = "";
   
     function renderStreams(streams) {
