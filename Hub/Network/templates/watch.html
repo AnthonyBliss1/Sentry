@@ -9,50 +9,39 @@
     body {
       margin: 16px;
       font-family: "JetBrains Mono", monospace;
-      background: #050805;
-      color: #00ff66;
-      text-shadow: 0 0 8px rgba(0, 255, 102, 0.25);
+      background: #0f172a;
+      color: #e2e8f0;
     }
 
     h1 {
       margin-top: 0;
       margin-bottom: 30px;
       font-size: 32px;
-      color: #00ff66;
-    }
-
-    h1::before {
-      content: "> ";
-      color: #00cc55;
-    }
-
-    h1::after {
-      content: "_";
-      margin-left: 4px;
-      animation: blink 1s steps(1) infinite;
+      color: #f8fafc;
     }
 
     #status {
       display: inline-block;
       margin-bottom: 16px;
       padding: 4px 8px;
-      color: #00cc55;
-      border: 1px solid #00aa44;
-      background: #020402;
+      color: #bae6fd;
+      border: 1px solid #2563eb;
+      background: #020617;
     }
 
     #videos {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
       gap: 16px;
-      width: 100%
+      width: 100%;
     }
 
     .card {
-      background: #050505;
-      border: 1px solid #00ff66;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 10px;
       padding: 12px;
-      box-shadow: 0 0 14px rgba(0, 255, 102, 0.12);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
     }
 
     .cardHeader {
@@ -60,14 +49,14 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
     .label {
       padding-bottom: 0;
       margin-bottom: 0;
       font-size: 14px;
-      color: #00ff66;
+      color: #cbd5e1;
       word-break: break-word;
       flex: 1;
     }
@@ -76,40 +65,52 @@
       margin-bottom: 0;
       padding: 6px 10px;
       font-family: inherit;
-      color: #050805;
-      background: #00ff66;
-      border: 1px solid #00ff66;
+      color: #f8fafc;
+      background: #dc2626;
+      border: 1px solid #ef4444;
+      border-radius: 6px;
       cursor: pointer;
       white-space: nowrap;
     }
 
     .stopBtn:hover {
-      background: #00cc55;
+      background: #b91c1c;
+      border-color: #f87171;
+    }
+
+    .stopBtn:active {
+      transform: translateY(1px);
     }
 
     iframe {
       width: 100%;
       aspect-ratio: 16 / 9;
       border: 0;
+      border-radius: 8px;
       background: #000;
     }
 
     .empty {
       padding: 24px;
-      border: 1px dashed #00ff66;
-      color: #00cc55;
+      border: 1px dashed #475569;
+      border-radius: 10px;
+      color: #94a3b8;
       text-align: center;
-    }
-
-    @keyframes blink {
-      50% {
-        opacity: 0;
-      }
+      background: #111827;
     }
 
     @media (max-width: 600px) {
       h1 {
         font-size: 22px;
+      }
+
+      .cardHeader {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .stopBtn {
+        width: 100%;
       }
     }
 
@@ -167,7 +168,7 @@
 
         const stopBtn = document.createElement("button");
         stopBtn.className = "stopBtn";
-        stopBtn.textContent = "Turn Off Stream";
+        stopBtn.textContent = "Turn Off";
         stopBtn.type = "button";
 
         stopBtn.addEventListener("click", () => {
