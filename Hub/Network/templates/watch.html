@@ -1,5 +1,6 @@
 <!doctype html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>{{.Title}}</title>
@@ -54,12 +55,36 @@
       box-shadow: 0 0 14px rgba(0, 255, 102, 0.12);
     }
 
-    .label {
+    .cardHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       margin-bottom: 8px;
-      padding-bottom: 8px;
+    }
+
+    .label {
+      padding-bottom: 0;
+      margin-bottom: 0;
       font-size: 14px;
       color: #00ff66;
       word-break: break-word;
+      flex: 1;
+    }
+
+    .stopBtn {
+      margin-bottom: 0;
+      padding: 6px 10px;
+      font-family: inherit;
+      color: #050805;
+      background: #00ff66;
+      border: 1px solid #00ff66;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .stopBtn:hover {
+      background: #00cc55;
     }
 
     iframe {
@@ -88,13 +113,14 @@
       }
     }
 
-    @media (min-width: 900px){
+    @media (min-width: 900px) {
       #videos {
         grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
       }
     }
   </style>
 </head>
+
 <body>
   <h1>{{.Title}}</h1>
   <div id="videos"></div>
@@ -104,32 +130,22 @@
 
     const socket = new WebSocket("{{.WebSocketURL}}");
 
-    // test out the ws by sending a stop message on connect
-    socket.onopen = (event) => {
-      const data = {
-        recipient: "bedroom-cam",
-        action: "Stop"
-      };
-
-      socket.send(JSON.stringify(data))
-    };
-
     socket.onmessage = (event) => {
       console.log("received from server:", event.data);
     };
 
     let currentKey = "";
-  
+
     function renderStreams(streams) {
       const nextKey = JSON.stringify([...streams].sort());
       if (nextKey === currentKey) {
         console.log(`${streams.length} active camera(s)`);
         return;
       }
-  
+
       currentKey = nextKey;
       videosEl.innerHTML = "";
-  
+
       if (streams.length === 0) {
         console.log("no active cameras");
         const empty = document.createElement("div");
@@ -138,34 +154,76 @@
         videosEl.appendChild(empty);
         return;
       }
-  
+
       console.log(`${streams.length} active camera(s)`);
-  
+
       for (const path of streams) {
         const card = document.createElement("div");
         card.className = "card";
-  
+
         const label = document.createElement("div");
         label.className = "label";
         label.textContent = "[" + path + "]";
-  
+
+        const stopBtn = document.createElement("button");
+        stopBtn.className = "stopBtn";
+        stopBtn.textContent = "Turn Off Stream";
+        stopBtn.type = "button";
+
+        stopBtn.addEventListener("click", () => {
+          sendStopMessage(socket, path);
+        });
+
         const frame = document.createElement("iframe");
         frame.allow = "autoplay; fullscreen; picture-in-picture";
         frame.src = `{{.WebRTCBase}}/${encodeURIComponent(path)}`;
-  
-        card.appendChild(label);
+
+        const header = document.createElement("div");
+        header.className = "cardHeader";
+
+        header.appendChild(label);
+        header.appendChild(stopBtn);
+
+        card.appendChild(header);
         card.appendChild(frame);
         videosEl.appendChild(card);
       }
     }
-  
+
+    function sendStopMessage(socket, deviceID) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket is not open");
+        return;
+      }
+
+      const msg = {
+        recipient: deviceID,
+        action: "Stop"
+      }
+      socket.send(JSON.stringify(msg))
+    }
+
+    function sendStartMessage(socket, deviceID) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket is not open");
+        return;
+      }
+
+      const msg = {
+        recipient: deviceID,
+        action: "Start"
+      }
+
+      socket.send(JSON.stringify(msg))
+    }
+
     async function loadStreams() {
       try {
-        const resp = await fetch("/api/streams", { cache: "no-store" });
+        const resp = await fetch("/api/streams", {cache: "no-store"});
         if (!resp.ok) {
           throw new Error("failed to load streams: " + resp.status);
         }
-  
+
         const data = await resp.json();
         const streams = Array.isArray(data.streams) ? data.streams : [];
         renderStreams(streams);
@@ -173,9 +231,10 @@
         console.error(err);
       }
     }
-  
+
     loadStreams();
     setInterval(loadStreams, 5000);
   </script>
 </body>
+
 </html>

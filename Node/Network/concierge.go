@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 )
 
-// LiveKit Server credentials received from API
+// MediaMTX Server credentials received from API
 
 type Concierge struct {
 	RTSPPublishBase string `json:"rtsp_publish_base"`
@@ -17,35 +18,14 @@ type Concierge struct {
 	HLSBase         string `json:"hls_base"`
 
 	roomServiceURL string // not exportable
+
+	Stream
 }
 
 type Stream struct {
 	rpiCmd    *exec.Cmd
 	ffmpegCmd *exec.Cmd
-}
-
-func (s *Stream) Stop() error {
-	var firstErr error
-
-	if s.rpiCmd != nil && s.rpiCmd.Process != nil {
-		if err := s.rpiCmd.Process.Kill(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	if s.ffmpegCmd != nil && s.ffmpegCmd.Process != nil {
-		if err := s.ffmpegCmd.Process.Kill(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	if s.rpiCmd != nil {
-		s.rpiCmd.Process.Wait()
-	}
-	if s.ffmpegCmd != nil {
-		s.ffmpegCmd.Process.Wait()
-	}
-
-	return firstErr
+	isRunning bool
 }
 
 func (c *Concierge) String() string {
@@ -54,9 +34,55 @@ func (c *Concierge) String() string {
 	return string(b)
 }
 
-func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
+func (c *Concierge) StreamController(action <-chan Message) error {
+	deviceID, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("failed to collect hostname: %w", err)
+	}
+
+	for msg := range action {
+		if msg.Action == "Stop" {
+			utils.Blue.Println("> Stopping stream...")
+			c.Stop()
+		}
+		if msg.Action == "Start" {
+			utils.Blue.Println("> Starting stream...")
+			go c.PublishStream(deviceID)
+		}
+	}
+
+	return nil
+}
+
+func (c *Concierge) Stop() error {
+	var firstErr error
+
+	if c.rpiCmd != nil && c.rpiCmd.Process != nil {
+		if err := c.rpiCmd.Process.Kill(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if c.ffmpegCmd != nil && c.ffmpegCmd.Process != nil {
+		if err := c.ffmpegCmd.Process.Kill(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	if c.rpiCmd != nil {
+		c.rpiCmd.Process.Wait()
+	}
+	if c.ffmpegCmd != nil {
+		c.ffmpegCmd.Process.Wait()
+	}
+
+	c.isRunning = false
+
+	return firstErr
+}
+
+func (c *Concierge) PublishStream(deviceID string) error {
 	if c.RTSPPublishBase == "" {
-		return Stream{}, fmt.Errorf("rtsp publish base is empty")
+		return fmt.Errorf("rtsp publish base is empty")
 	}
 
 	publishURL := fmt.Sprintf("%s/%s", c.RTSPPublishBase, deviceID)
@@ -80,7 +106,7 @@ func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
 
 	rpiStdout, err := rpiCmd.StdoutPipe()
 	if err != nil {
-		return Stream{}, fmt.Errorf("failed to create rpicam stdout pipe: %w", err)
+		return fmt.Errorf("failed to create rpicam stdout pipe: %w", err)
 	}
 	rpiCmd.Stderr = io.Discard
 
@@ -103,19 +129,22 @@ func (c *Concierge) PublishStream(deviceID string) (Stream, error) {
 	ffmpegCmd.Stderr = io.Discard
 
 	if err := rpiCmd.Start(); err != nil {
-		return Stream{}, fmt.Errorf("failed to start rpicam-vid: %w", err)
+		return fmt.Errorf("failed to start rpicam-vid: %w", err)
 	}
 
 	if err := ffmpegCmd.Start(); err != nil {
 		rpiCmd.Process.Kill()
 		rpiCmd.Wait()
-		return Stream{}, fmt.Errorf("failed to start ffmpeg: %w", err)
+		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
 	utils.Green.Printf("[ Publishing -> %s ]\n", publishURL)
 
-	return Stream{
+	c.Stream = Stream{
 		rpiCmd:    rpiCmd,
 		ffmpegCmd: ffmpegCmd,
-	}, nil
+		isRunning: true,
+	}
+
+	return nil
 }

@@ -25,6 +25,7 @@ func main() {
 	// find Hub services
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	var wg sync.WaitGroup
+	action := make(chan network.Message)
 
 	utils.Blue.Println("> Looking for Concierge Service...")
 	utils.Blue.Println("> Looking for Commander Service...")
@@ -41,8 +42,16 @@ func main() {
 	// background task to continue listening to ws
 	utils.Blue.Println("> Dialing Commander...")
 	go func() {
-		if err := node.DialCommander(); err != nil {
+		if err := node.DialCommander(action); err != nil {
 			log.Fatal(err)
+		}
+	}()
+
+	// background task to respond to ws actions received
+	utils.Blue.Println("> Deploying Stream Controller...")
+	go func() {
+		if err := node.StreamController(action); err != nil {
+			log.Panic(err)
 		}
 	}()
 
@@ -55,19 +64,10 @@ func main() {
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	utils.Blue.Println("> Publishing Video Stream...")
 	go func() {
-		_, err = node.PublishStream(deviceID)
-		if err != nil {
+		if err = node.PublishStream(deviceID); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	select {} // block forever
-
-	// test end
-	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	//	time.Sleep(120 * time.Second)
-	//
-	//	if err := stream.Stop(); err != nil {
-	//		utils.Red.Print(err)
-	//	}
+	select {}
 }

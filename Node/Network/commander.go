@@ -24,7 +24,7 @@ func (m *Message) String() string {
 	return string(b)
 }
 
-func (c *Commander) DialCommander() error {
+func (c *Commander) DialCommander(action chan<- Message) error {
 	var err error
 	hn, _ := os.Hostname()
 
@@ -45,8 +45,10 @@ func (c *Commander) DialCommander() error {
 			if msg.Recipient == hn {
 				utils.Blue.Println("WS Message Received: ", msg)
 
-				// depending on action, should then send msg to channel to communicate with the publish stream go routine
-				// should turn the publish stream go routine into a stream controller than will start and stop depending on Actions
+				// after confirming the recipient, send the msg to the channel
+				// channel used to pass data to video publishing go routine
+				utils.Blue.Println("> Sending to channel...")
+				action <- *msg
 			}
 		}
 	}
