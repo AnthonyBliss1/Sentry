@@ -66,7 +66,7 @@ func (h *Hub) StartCommanderService() {
 	go h.RunCommander()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", h.ServeWS)
+	mux.HandleFunc("/ws", h.WSHandler)
 
 	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 9000)
 	h.wsURL = fmt.Sprintf("ws://%s/ws", addr)

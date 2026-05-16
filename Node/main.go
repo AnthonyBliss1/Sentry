@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 	"sync"
 
 	network "github.com/anthonybliss1/Sentry/Node/Network"
@@ -10,8 +9,6 @@ import (
 )
 
 var node network.NodeClient
-
-// stream video.Stream
 
 func main() {
 	// TODO: implement these checks
@@ -50,21 +47,17 @@ func main() {
 	// background task to respond to ws actions received
 	utils.Blue.Println("> Deploying Stream Controller...")
 	go func() {
+		node.IsRunning = true
 		if err := node.StreamController(action); err != nil {
 			log.Panic(err)
 		}
 	}()
 
-	deviceID, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("failed to get hostname: %v", err)
-	}
-
-	// start recording and creating segments
+	// start streaming
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	utils.Blue.Println("> Publishing Video Stream...")
 	go func() {
-		if err = node.PublishStream(deviceID); err != nil {
+		if err := node.PublishStream(utils.Hostname); err != nil {
 			log.Fatal(err)
 		}
 	}()

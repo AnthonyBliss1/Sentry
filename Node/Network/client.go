@@ -26,8 +26,7 @@ type NodeClient struct {
 	Concierge
 	Commander
 
-	Stream Stream
-	Mu     sync.Mutex
+	Mu sync.Mutex
 }
 
 // MDNS Lookups

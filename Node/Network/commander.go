@@ -3,7 +3,6 @@ package network
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 	"github.com/gorilla/websocket"
@@ -17,6 +16,11 @@ type Commander struct {
 type Message struct {
 	Recipient string `json:"recipient"` // this will be the hostname for the intended node
 	Action    string `json:"action"`
+	NewNode   Node   `json:"new_node"`
+}
+
+type Node struct {
+	Hostname string `json:"hostname"`
 }
 
 func (m *Message) String() string {
@@ -26,13 +30,17 @@ func (m *Message) String() string {
 
 func (c *Commander) DialCommander(action chan<- Message) error {
 	var err error
-	hn, _ := os.Hostname()
 
 	c.Conn, _, err = websocket.DefaultDialer.Dial(c.CommanderServiceURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dail commander: %w", err)
 	}
 	defer c.Conn.Close()
+
+	// send register_node message
+	if err := c.RegisterNode(); err != nil {
+		return fmt.Errorf("failed to register node: %w", err)
+	}
 
 	// continue listening
 	for {
@@ -42,8 +50,8 @@ func (c *Commander) DialCommander(action chan<- Message) error {
 			utils.Red.Printf("> Failed to read message from commander: %v\n", err)
 		} else {
 			// node will determine if the message is intended for itself
-			if msg.Recipient == hn {
-				utils.Blue.Println("WS Message Received: ", msg)
+			if msg.Recipient == utils.Hostname {
+				utils.Green.Println("WS Message Received: ", msg)
 
 				// after confirming the recipient, send the msg to the channel
 				// channel used to pass data to video publishing go routine
@@ -52,4 +60,10 @@ func (c *Commander) DialCommander(action chan<- Message) error {
 			}
 		}
 	}
+}
+
+func (c *Commander) RegisterNode() error {
+	msg := Message{Recipient: "All", Action: "register_node", NewNode: Node{Hostname: utils.Hostname}}
+
+	return c.Conn.WriteJSON(msg)
 }

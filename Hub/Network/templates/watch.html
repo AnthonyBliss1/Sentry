@@ -99,6 +99,53 @@
       background: #111827;
     }
 
+    .inactiveBar {
+      margin-bottom: 18px;
+      padding: 12px;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      background: #111827;
+    }
+
+    .inactiveTitle {
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+
+    .inactiveNodes {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .startBtn {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      font-family: inherit;
+      color: #f8fafc;
+      background: #16a34a;
+      border: 1px solid #22c55e;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .startBtn:hover {
+      background: #15803d;
+      border-color: #4ade80;
+    }
+
+    .startBtn:active {
+      transform: translateY(1px);
+    }
+
+    .inactiveEmpty {
+      color: #64748b;
+      font-size: 13px;
+    }
+
     @media (max-width: 600px) {
       h1 {
         font-size: 22px;
@@ -124,21 +171,106 @@
 
 <body>
   <h1>{{.Title}}</h1>
+
+  <section id="inactiveBar" class="inactiveBar">
+    <div class="inactiveTitle">Connected Cameras</div>
+    <div id="inactiveNodes" class="inactiveNodes"></div>
+  </section>
+
   <div id="videos"></div>
 
   <script>
     const videosEl = document.getElementById("videos");
-
+    const inactiveNodesEl = document.getElementById("inactiveNodes");
+    const inactiveBarEl = document.getElementById("inactiveBar");
     const socket = new WebSocket("{{.WebSocketURL}}");
 
+    let connectedNodes = new Map();
+    let publishingNodes = new Map();
+
     socket.onmessage = (event) => {
-      console.log("received from server:", event.data);
+      let msg;
+
+      try {
+        msg = JSON.parse(event.data);
+      } catch (err) {
+        console.error("invalid websocket json:", event.data);
+        return;
+      }
+
+      console.log("received from server:", msg);
+
+      switch (msg.action) {
+        case "new_connection":
+        case "node_connected":
+        case "node_disconnected":
+        case "nodes_updated":
+          updateConnectedNodes(msg.connected_nodes || []);
+          renderConnectedNodes();
+          break;
+
+        default:
+          console.log("unhandled websocket action:", msg.action);
+          break;
+      }
     };
+
+    function updateConnectedNodes(nodes) {
+      connectedNodes.clear();
+
+      for (const node of nodes) {
+        if (!node.hostname) continue;
+        connectedNodes.set(node.hostname, node);
+      }
+    }
+
+    function renderConnectedNodes() {
+      inactiveNodesEl.innerHTML = "";
+
+      const nonPublishingNodes = [];
+
+      for (const [hostname, node] of connectedNodes) {
+        if (!publishingNodes.has(hostname)) {
+          nonPublishingNodes.push(node);
+        }
+      }
+
+      if (nonPublishingNodes.length === 0) {
+        inactiveBarEl.style.display = "none";
+        return;
+      }
+
+      inactiveBarEl.style.display = "";
+
+      for (const node of nonPublishingNodes) {
+        const btn = document.createElement("button");
+        btn.className = "startBtn";
+        btn.type = "button";
+        btn.textContent = `Turn On ${node.hostname}`;
+
+        btn.addEventListener("click", () => {
+          sendStartMessage(socket, node.hostname);
+        });
+
+        inactiveNodesEl.appendChild(btn);
+      }
+    }
+
 
     let currentKey = "";
 
     function renderStreams(streams) {
       const nextKey = JSON.stringify([...streams].sort());
+
+      publishingNodes = new Map();
+
+      for (const path of streams) {
+        const hostname = path;
+        publishingNodes.set(hostname, hostname);
+      }
+
+      renderConnectedNodes();
+
       if (nextKey === currentKey) {
         console.log(`${streams.length} active camera(s)`);
         return;
@@ -149,9 +281,11 @@
 
       if (streams.length === 0) {
         console.log("no active cameras");
+
         const empty = document.createElement("div");
         empty.className = "empty";
         empty.textContent = "No active streams found";
+
         videosEl.appendChild(empty);
         return;
       }
@@ -159,12 +293,14 @@
       console.log(`${streams.length} active camera(s)`);
 
       for (const path of streams) {
+        const hostname = path;
+
         const card = document.createElement("div");
         card.className = "card";
 
         const label = document.createElement("div");
         label.className = "label";
-        label.textContent = "[" + path + "]";
+        label.textContent = "[" + hostname + "]";
 
         const stopBtn = document.createElement("button");
         stopBtn.className = "stopBtn";
@@ -172,12 +308,12 @@
         stopBtn.type = "button";
 
         stopBtn.addEventListener("click", () => {
-          sendStopMessage(socket, path);
+          sendStopMessage(socket, hostname);
         });
 
         const frame = document.createElement("iframe");
         frame.allow = "autoplay; fullscreen; picture-in-picture";
-        frame.src = `{{.WebRTCBase}}/${encodeURIComponent(path)}`;
+        frame.src = `{{.WebRTCBase}}/${encodeURIComponent(hostname)}`;
 
         const header = document.createElement("div");
         header.className = "cardHeader";
@@ -187,6 +323,7 @@
 
         card.appendChild(header);
         card.appendChild(frame);
+
         videosEl.appendChild(card);
       }
     }
@@ -199,7 +336,7 @@
 
       const msg = {
         recipient: deviceID,
-        action: "Stop"
+        action: "stop"
       }
       socket.send(JSON.stringify(msg))
     }
@@ -212,7 +349,7 @@
 
       const msg = {
         recipient: deviceID,
-        action: "Start"
+        action: "start"
       }
 
       socket.send(JSON.stringify(msg))

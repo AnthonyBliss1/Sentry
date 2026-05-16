@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
@@ -23,9 +22,9 @@ type Concierge struct {
 }
 
 type Stream struct {
-	rpiCmd    *exec.Cmd
-	ffmpegCmd *exec.Cmd
-	isRunning bool
+	RpiCmd    *exec.Cmd
+	FfmpegCmd *exec.Cmd
+	IsRunning bool
 }
 
 func (c *Concierge) String() string {
@@ -35,19 +34,25 @@ func (c *Concierge) String() string {
 }
 
 func (c *Concierge) StreamController(action <-chan Message) error {
-	deviceID, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("failed to collect hostname: %w", err)
-	}
-
 	for msg := range action {
-		if msg.Action == "Stop" {
-			utils.Blue.Println("> Stopping stream...")
-			c.Stop()
+		if msg.Action == "stop" {
+			if !c.IsRunning {
+				utils.Red.Println("> There is no active stream!")
+			} else {
+				utils.Blue.Println("> Stopping stream...")
+				c.IsRunning = false
+				c.Stop()
+			}
 		}
-		if msg.Action == "Start" {
-			utils.Blue.Println("> Starting stream...")
-			go c.PublishStream(deviceID)
+
+		if msg.Action == "start" {
+			if c.IsRunning {
+				utils.Red.Println("> There is already an active stream!")
+			} else {
+				utils.Blue.Println("> Starting stream...")
+				c.IsRunning = true
+				go c.PublishStream(utils.Hostname)
+			}
 		}
 	}
 
@@ -57,25 +62,23 @@ func (c *Concierge) StreamController(action <-chan Message) error {
 func (c *Concierge) Stop() error {
 	var firstErr error
 
-	if c.rpiCmd != nil && c.rpiCmd.Process != nil {
-		if err := c.rpiCmd.Process.Kill(); err != nil && firstErr == nil {
+	if c.RpiCmd != nil && c.RpiCmd.Process != nil {
+		if err := c.RpiCmd.Process.Kill(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
-	if c.ffmpegCmd != nil && c.ffmpegCmd.Process != nil {
-		if err := c.ffmpegCmd.Process.Kill(); err != nil && firstErr == nil {
+	if c.FfmpegCmd != nil && c.FfmpegCmd.Process != nil {
+		if err := c.FfmpegCmd.Process.Kill(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	if c.rpiCmd != nil {
-		c.rpiCmd.Process.Wait()
+	if c.RpiCmd != nil {
+		c.RpiCmd.Process.Wait()
 	}
-	if c.ffmpegCmd != nil {
-		c.ffmpegCmd.Process.Wait()
+	if c.FfmpegCmd != nil {
+		c.FfmpegCmd.Process.Wait()
 	}
-
-	c.isRunning = false
 
 	return firstErr
 }
@@ -140,11 +143,8 @@ func (c *Concierge) PublishStream(deviceID string) error {
 
 	utils.Green.Printf("[ Publishing -> %s ]\n", publishURL)
 
-	c.Stream = Stream{
-		rpiCmd:    rpiCmd,
-		ffmpegCmd: ffmpegCmd,
-		isRunning: true,
-	}
+	c.RpiCmd = rpiCmd
+	c.FfmpegCmd = ffmpegCmd
 
 	return nil
 }
