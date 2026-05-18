@@ -11,6 +11,7 @@ NODE_BINARY := sentry-node
 
 HUB_DEVICE := $(HUB_DEVICE)
 NODE_DEVICE := $(NODE_DEVICE)
+NODE_5_DEVICE := $(NODE_5_DEVICE)
 
 .PHONY: all hub node clean dirs deploy-hub deploy-node
 
@@ -26,6 +27,10 @@ hub: dirs
 node: dirs
 	cd $(NODE_DIR) && GOOS=linux GOARCH=arm GOARM=7 go build -o ../$(NODE_BUILD_DIR)/$(NODE_BINARY)
 	scp $(NODE_BUILD_DIR)/$(NODE_BINARY) $(NODE_DEVICE):~
+
+node-5: dirs
+	cd $(NODE_DIR) && GOOS=linux GOARCH=arm64 go build -o ../$(NODE_BUILD_DIR)/$(NODE_BINARY)
+	scp $(NODE_BUILD_DIR)/$(NODE_BINARY) $(NODE_5_DEVICE):~
 
 local-hub: dirs 
 	cd $(HUB_DIR) && go build -o ../$(HUB_BUILD_DIR)/$(HUB_BINARY)

@@ -47,7 +47,7 @@ func (c *Commander) DialCommander(action chan<- Message) error {
 		var msg *Message
 
 		if err := c.Conn.ReadJSON(&msg); err != nil {
-			utils.Red.Printf("> Failed to read message from commander: %v\n", err)
+			return fmt.Errorf("commander websocket read failed: %w", err)
 		} else {
 			// node will determine if the message is intended for itself
 			if msg.Recipient == utils.Hostname {

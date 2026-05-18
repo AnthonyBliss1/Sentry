@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"sync"
 
+	deploy "github.com/anthonybliss1/Sentry/Node/Deploy"
 	network "github.com/anthonybliss1/Sentry/Node/Network"
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
 )
@@ -18,6 +20,20 @@ func main() {
 	// if err := InitCamera(); err != nil {
 	// log.Fatal(err)
 	// }
+
+	d := flag.Bool("deploy", false, "creates systemD file for the sentry-node program")
+
+	flag.Parse()
+
+	if *d {
+		if err := deploy.DeployNode(); err != nil {
+			utils.Red.Printf("failed to deploy node: %q\n", err)
+			return
+		}
+
+		utils.Blue.Println("\nSentry Node successfully deployed!")
+		return
+	}
 
 	// find Hub services
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -36,6 +52,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// start streaming
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	utils.Blue.Println("> Publishing Video Stream...")
+	node.IsRunning = true
+	go func() {
+		if err := node.PublishStream(utils.Hostname); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	// background task to continue listening to ws
 	utils.Blue.Println("> Dialing Commander...")
 	go func() {
@@ -47,18 +73,8 @@ func main() {
 	// background task to respond to ws actions received
 	utils.Blue.Println("> Deploying Stream Controller...")
 	go func() {
-		node.IsRunning = true
 		if err := node.StreamController(action); err != nil {
 			log.Panic(err)
-		}
-	}()
-
-	// start streaming
-	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	utils.Blue.Println("> Publishing Video Stream...")
-	go func() {
-		if err := node.PublishStream(utils.Hostname); err != nil {
-			log.Fatal(err)
 		}
 	}()
 

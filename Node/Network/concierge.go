@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 
 	utils "github.com/anthonybliss1/Sentry/Node/Utils"
@@ -92,18 +93,18 @@ func (c *Concierge) PublishStream(deviceID string) error {
 
 	rpiCmd := exec.Command(
 		"rpicam-vid",
+		"-n",
 		"-t", "0",
-		"--nopreview",
+		"--mode", "1296:972:10:P",
 		"--width", "1280",
 		"--height", "720",
-		"--framerate", "15",
-		"--bitrate", "1200000",
-		"--codec", "h264",
-		"--profile", "baseline",
-		"--level", "4",
-		"--intra", "15",
-		"--inline",
-		"--flush",
+		"--framerate", "30",
+		"--codec", "mjpeg",
+		"--quality", "95",
+		"--shutter", "33333",
+		"--gain", "16.0",
+		"--awb", "auto",
+		"--denoise", "auto",
 		"-o", "-",
 	)
 
@@ -111,17 +112,28 @@ func (c *Concierge) PublishStream(deviceID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create rpicam stdout pipe: %w", err)
 	}
-	rpiCmd.Stderr = io.Discard
+	rpiCmd.Stderr = os.Stdout
 
 	ffmpegCmd := exec.Command(
 		"ffmpeg",
 		"-hide_banner",
-		"-loglevel", "warning",
-		"-fflags", "nobuffer",
-		"-f", "h264",
+		"-loglevel", "error",
+		"-f", "mjpeg",
+		"-framerate", "30",
 		"-i", "pipe:0",
 		"-an",
-		"-c:v", "copy",
+		"-vf", "scale=in_range=pc:out_range=tv,format=yuv420p",
+		"-c:v", "libx264",
+		"-preset", "veryfast",
+		"-tune", "zerolatency",
+		"-profile:v", "high",
+		"-level:v", "4.1",
+		"-pix_fmt", "yuv420p",
+		"-b:v", "15000k",
+		"-maxrate", "15000k",
+		"-bufsize", "1000k",
+		"-g", "1",
+		"-bf", "0",
 		"-f", "rtsp",
 		"-rtsp_transport", "tcp",
 		"-pkt_size", "1200",
@@ -129,7 +141,7 @@ func (c *Concierge) PublishStream(deviceID string) error {
 	)
 	ffmpegCmd.Stdin = rpiStdout
 	ffmpegCmd.Stdout = io.Discard
-	ffmpegCmd.Stderr = io.Discard
+	ffmpegCmd.Stderr = os.Stdout
 
 	if err := rpiCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start rpicam-vid: %w", err)
