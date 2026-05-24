@@ -66,7 +66,14 @@ func main() {
 
 	// start the composer
 	utils.Blue.Println("> Starting MediaMTX container...")
-	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{}); err != nil {
+	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{
+		Create: api.CreateOptions{
+			Build: &api.BuildOptions{
+				Progress: "plain",
+				Out:      os.Stdout,
+			},
+		},
+	}); err != nil {
 		log.Fatal(err)
 	}
 

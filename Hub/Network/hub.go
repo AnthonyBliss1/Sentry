@@ -49,7 +49,7 @@ func (h *Hub) StartConciergeService() {
 	r.Get("/watch", h.WatchHandler)
 	r.Get("/api/streams", h.StreamsHandler)
 
-	addr := fmt.Sprintf("%s:%d", h.LanIP.String(), 8000)
+	addr := ":8000"
 
 	go func() {
 		if err := http.ListenAndServe(addr, r); err != nil {
@@ -57,7 +57,7 @@ func (h *Hub) StartConciergeService() {
 		}
 	}()
 
-	utils.Green.Printf("[ Concierge Service listening on :%d ]\n", 8000)
+	utils.Green.Printf("[ Concierge Service listening on http://%s:%d ]\n", h.LanIP.String(), 8000)
 }
 
 func (h *Hub) StartCommanderService() {

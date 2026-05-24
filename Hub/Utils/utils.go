@@ -16,7 +16,7 @@ import (
 	"github.com/fatih/color"
 )
 
-//go:embed docker-compose.yml mediamtx.yml
+//go:embed docker-compose.yml mediamtx.yml Dockerfile.detect detect-dog.py
 var embeddedConfigs embed.FS
 
 var (
@@ -48,7 +48,7 @@ func writeEmbeddedConfigs() (string, error) {
 		return "", fmt.Errorf("failed to create temp working dir: %w", err)
 	}
 
-	files := []string{"docker-compose.yml", "mediamtx.yml"}
+	files := []string{"docker-compose.yml", "mediamtx.yml", "Dockerfile.detect", "detect-dog.py"}
 
 	for _, name := range files {
 		data, err := embeddedConfigs.ReadFile(name)
