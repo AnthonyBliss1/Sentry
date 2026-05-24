@@ -1,0 +1,58 @@
+package network
+
+import (
+	"fmt"
+	"sync"
+)
+
+type DogDetection struct {
+	Confidence float64 `json:"confidence"`
+}
+
+type DetectionEvent struct {
+	Stream     string         `json:"stream"`
+	Count      int            `json:"count"`
+	Detections []DogDetection `json:"detections"`
+	Timestamp  string         `json:"timestamp"`
+}
+
+type DetectionBroker struct {
+	mu      sync.RWMutex
+	clients map[chan []byte]struct{}
+}
+
+func CreateDetectionBroker() *DetectionBroker {
+	return &DetectionBroker{
+		clients: make(map[chan []byte]struct{}),
+	}
+}
+
+func (b *DetectionBroker) Broadcast(payload []byte) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	for ch := range b.clients {
+		select {
+		case ch <- payload:
+		default:
+			fmt.Println("[SSE dropping event... ]")
+		}
+	}
+}
+
+func (b *DetectionBroker) AddClient() chan []byte {
+	ch := make(chan []byte, 16)
+
+	b.mu.Lock()
+	b.clients[ch] = struct{}{}
+	b.mu.Unlock()
+
+	return ch
+}
+
+func (b *DetectionBroker) RemoveClient(ch chan []byte) {
+	b.mu.Lock()
+	delete(b.clients, ch)
+	close(ch)
+	b.mu.Unlock()
+}

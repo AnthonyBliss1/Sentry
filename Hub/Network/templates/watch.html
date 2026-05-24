@@ -141,6 +141,21 @@
       transform: translateY(1px);
     }
 
+    .detectionBadge {
+      margin-left: 8px;
+      padding: 3px 7px;
+      border: 1px solid #f59e0b;
+      border-radius: 999px;
+      color: #fde68a;
+      background: #451a03;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .detectionBadge.hidden {
+      display: none;
+    }
+
     .inactiveEmpty {
       color: #64748b;
       font-size: 13px;
@@ -302,6 +317,11 @@
         label.className = "label";
         label.textContent = "[" + hostname + "]";
 
+        const detectionBadge = document.createElement("span");
+        detectionBadge.className = "detectionBadge hidden";
+        detectionBadge.dataset.stream = hostname;
+        detectionBadge.textContent = "";
+
         const stopBtn = document.createElement("button");
         stopBtn.className = "stopBtn";
         stopBtn.textContent = "Turn Off";
@@ -319,6 +339,7 @@
         header.className = "cardHeader";
 
         header.appendChild(label);
+        header.appendChild(detectionBadge);
         header.appendChild(stopBtn);
 
         card.appendChild(header);
@@ -355,6 +376,47 @@
       socket.send(JSON.stringify(msg))
     }
 
+    function connectDetectionEvents() {
+      const events = new EventSource("{{.DetectionEventsURL}}");
+
+      events.addEventListener("dog_detection", (event) => {
+        let detection;
+
+        try {
+          detection = JSON.parse(event.data);
+        } catch (err) {
+          console.error("invalid SSE detection json:", event.data);
+          return;
+        }
+
+        console.log("dog detection:", detection);
+        renderDetection(detection);
+      });
+
+      events.onerror = () => {
+        console.error("detection SSE disconnected; browser will retry");
+      };
+    }
+
+    function renderDetection(detection) {
+      if (!detection || !detection.stream) return;
+
+      const badge = document.querySelector(
+        `.detectionBadge[data-stream="${CSS.escape(detection.stream)}"]`
+      );
+
+      if (!badge) return;
+
+      badge.classList.remove("hidden");
+      badge.textContent = "DOG DETECTED";
+
+      clearTimeout(badge._hideTimer);
+      badge._hideTimer = setTimeout(() => {
+        badge.classList.add("hidden");
+        badge.textContent = "";
+      }, 2500);
+    }
+
     async function loadStreams() {
       try {
         const resp = await fetch("/api/streams", {cache: "no-store"});
@@ -372,6 +434,7 @@
 
     loadStreams();
     setInterval(loadStreams, 5000);
+    connectDetectionEvents();
   </script>
 </body>
 

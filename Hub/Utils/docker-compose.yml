@@ -26,9 +26,10 @@ services:
     environment:
       STREAMS_API: http://host.docker.internal:8000/api/streams
       RTSP_URL_BASE: rtsp://mediamtx:8554/
+      DETECTIONS_API: http://host.docker.internal:8000/api/detections
       MODEL_PATH: yolov8n.pt
       CONFIDENCE: "0.45"
-      FRAME_STRIDE: "10"
+      FRAME_STRIDE: "5"
       RECONNECT_DELAY_SECONDS: "3"
       LOG_EVERY_SECONDS: "5"
     extra_hosts:

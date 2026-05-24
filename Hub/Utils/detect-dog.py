@@ -5,6 +5,7 @@ import threading
 import requests
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+from datetime import datetime, timezone
 
 import cv2
 from ultralytics import YOLO
@@ -23,6 +24,7 @@ class Config:
     reconnect_delay_seconds: float
     stream_poll_seconds: float
     log_every_seconds: float
+    detections_api: str
 
 
 def load_config() -> Config:
@@ -34,11 +36,15 @@ def load_config() -> Config:
         rtsp_url_base=os.getenv("RTSP_URL_BASE", "rtsp://mediamtx:8554/"),
         model_path=os.getenv("MODEL_PATH", "yolov8n.pt"),
         confidence=float(os.getenv("CONFIDENCE", "0.45")),
-        frame_stride=int(os.getenv("FRAME_STRIDE", "10")),
+        frame_stride=int(os.getenv("FRAME_STRIDE", "5")),
         reconnect_delay_seconds=float(
             os.getenv("RECONNECT_DELAY_SECONDS", "3")),
         stream_poll_seconds=float(os.getenv("STREAM_POLL_SECONDS", "5")),
         log_every_seconds=float(os.getenv("LOG_EVERY_SECONDS", "5")),
+        detections_api=os.getenv(
+            "DETECTIONS_API",
+            "http://host.docker.internal:8000/api/detections",
+        ),
     )
 
 
@@ -54,6 +60,7 @@ class StreamWorker:
             daemon=True,
         )
         self.model_lock = model_lock
+        self.session = requests.Session()
 
     def start(self):
         print(f"> [{self.stream_name}] starting worker...", flush=True)
@@ -148,6 +155,8 @@ class StreamWorker:
                     f"count={len(dog_detections)} detections={dog_detections}",
                     flush=True,
                 )
+
+                self.publish_detections(dog_detections)
                 last_dog_log = now
 
     def detect_dogs(self, frame):
@@ -182,6 +191,27 @@ class StreamWorker:
                 )
 
         return detections
+
+    def publish_detections(self, dog_detections):
+        payload = {
+            "stream": self.stream_name,
+            "count": len(dog_detections),
+            "detections": dog_detections,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            resp = self.session.post(
+                self.config.detections_api,
+                json=payload,
+                timeout=2,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as err:
+            print(
+                f"[{self.stream_name}] failed to publish detection event: {err}",
+                flush=True,
+            )
 
 
 class DetectorSupervisor:

@@ -38,6 +38,10 @@ type Hub struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (h *Hub) StartConciergeService() {
+	if h.Detections == nil {
+		h.Detections = CreateDetectionBroker()
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -48,6 +52,9 @@ func (h *Hub) StartConciergeService() {
 	r.Get("/room-service", h.RoomServiceHandler)
 	r.Get("/watch", h.WatchHandler)
 	r.Get("/api/streams", h.StreamsHandler)
+
+	r.Post("/api/detections", h.PublishDetectionHandler)
+	r.Get("/api/detections/events", h.DetectionEventHandler)
 
 	addr := ":8000"
 
