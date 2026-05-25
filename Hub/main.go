@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	deploy "github.com/anthonybliss1/Sentry/Hub/Deploy"
 	network "github.com/anthonybliss1/Sentry/Hub/Network"
@@ -65,7 +66,7 @@ func main() {
 	}
 
 	// start the composer
-	utils.Blue.Println("> Starting MediaMTX container...")
+	utils.Blue.Println("> Starting MediaMTX & Object Detection containers...")
 	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{
 		Create: api.CreateOptions{
 			Build: &api.BuildOptions{
@@ -101,7 +102,35 @@ func main() {
 
 	// wait for ctrl+c
 	<-ctx.Done() // blocking
-	utils.Blue.Println("\n> Taking down MediaMTX container...")
+
+	utils.Blue.Println("\n> Taking down MDNS...")
+	if hub.HTTPMDNS != nil {
+		hub.HTTPMDNS.Shutdown()
+	}
+
+	if hub.WSMDNS != nil {
+		hub.WSMDNS.Shutdown()
+	}
+
+	utils.Blue.Println("> Taking down Concierge Service...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	// SSE
+	if hub.Detections != nil {
+		hub.Detections.Shutdown()
+	}
+
+	if err := hub.HTTPSrv.Shutdown(shutdownCtx); err != nil {
+		utils.Red.Println(err)
+	}
+
+	utils.Blue.Println("> Taking down Commander Service...")
+	if hub.Commander != nil {
+		hub.Shutdown() // calls Commander.Shutdown()
+	}
+
+	utils.Blue.Println("> Taking down MediaMTX & Object Detection containers...")
 	if err := composer.Service.Down(composer.Ctx, composer.Project.Name, api.DownOptions{Images: "all"}); err != nil {
 		utils.Red.Println(err)
 	}

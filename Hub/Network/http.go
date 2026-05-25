@@ -186,7 +186,14 @@ func (c *Concierge) DetectionEventHandler(w http.ResponseWriter, r *http.Request
 		case <-r.Context().Done():
 			return
 
-		case payload := <-ch:
+		case <-c.Detections.done:
+			return
+
+		case payload, ok := <-ch:
+			if !ok {
+				return
+			}
+
 			fmt.Fprint(w, "event: object_detection\n")
 			fmt.Fprintf(w, "data: %s\n\n", payload)
 			flusher.Flush()

@@ -75,6 +75,15 @@ func (cd *Commander) Broadcast(msg Message) {
 	}
 }
 
+func (cd *Commander) Shutdown() {
+	select {
+	case <-cd.shutdown:
+		return
+	default:
+		close(cd.shutdown)
+	}
+}
+
 func (cd *Commander) RunCommander() {
 	for {
 		select {
@@ -118,6 +127,14 @@ func (cd *Commander) RunCommander() {
 
 		case <-cd.shutdown:
 			cd.Broadcast(Message{Action: "server-shutdown"})
+
+			for client := range cd.Clients {
+				close(client.Send)
+				client.Conn.Close()
+				delete(cd.Clients, client)
+			}
+
+			cd.ConnectedNodes = make(map[string]Node)
 			return
 		}
 	}
@@ -156,7 +173,10 @@ type Client struct {
 
 func (c *Client) readPump() {
 	defer func() {
-		c.unregister <- c
+		select {
+		case c.unregister <- c:
+		case <-c.shutdown:
+		}
 		c.Conn.Close()
 	}()
 
@@ -173,7 +193,11 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		c.broadcast <- InboundMessage{Client: c, Message: msg}
+		select {
+		case c.broadcast <- InboundMessage{Client: c, Message: msg}:
+		case <-c.shutdown:
+			return
+		}
 	}
 }
 

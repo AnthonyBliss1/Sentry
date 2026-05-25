@@ -27,8 +27,10 @@ type Hub struct {
 	Concierge
 	*Commander
 
-	httpMDNS *mdns.Server
-	wsMDNS   *mdns.Server
+	HTTPMDNS *mdns.Server
+	WSMDNS   *mdns.Server
+
+	HTTPSrv *http.Server
 
 	Hostname string
 	LanIP    net.IP
@@ -58,9 +60,11 @@ func (h *Hub) StartConciergeService() {
 
 	addr := ":8000"
 
+	h.HTTPSrv = &http.Server{Addr: addr, Handler: r}
+
 	go func() {
-		if err := http.ListenAndServe(addr, r); err != nil {
-			utils.Red.Printf("HTTP Server Shutdown: %q\n", err)
+		if err := h.HTTPSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			utils.Red.Printf("Concierge Service error: %q\n", err)
 		}
 	}()
 
@@ -84,8 +88,8 @@ func (h *Hub) StartCommanderService() {
 	}
 
 	go func() {
-		if err := ws.ListenAndServe(); err != nil {
-			utils.Red.Printf("WebSocket Server Shutdown: %q\n", err)
+		if err := ws.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			utils.Red.Printf("Commander Service error: %q\n", err)
 		}
 	}()
 
@@ -103,13 +107,13 @@ func (h *Hub) StartMDNS() {
 	utils.Green.Println("[ MDNS Server advertising Concierge Service on :8000 ]")
 	utils.Green.Println("[ MDNS Server advertising Commander Service on :9000 ]")
 
-	h.httpMDNS, err = mdns.NewServer(&mdns.Config{Zone: httpService})
+	h.HTTPMDNS, err = mdns.NewServer(&mdns.Config{Zone: httpService})
 	if err != nil {
 		utils.Red.Printf("HTTP MDNS Server Shutdown: %q\n", err)
 		return
 	}
 
-	h.wsMDNS, err = mdns.NewServer(&mdns.Config{Zone: wsService})
+	h.WSMDNS, err = mdns.NewServer(&mdns.Config{Zone: wsService})
 	if err != nil {
 		utils.Red.Printf("WebSocket MDNS Server Shutdown: %q\n", err)
 		return

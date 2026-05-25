@@ -15,12 +15,22 @@ type DetectionEvent struct {
 type DetectionBroker struct {
 	mu      sync.RWMutex
 	clients map[chan []byte]struct{}
+
+	done chan struct{}
+	once sync.Once
 }
 
 func CreateDetectionBroker() *DetectionBroker {
 	return &DetectionBroker{
 		clients: make(map[chan []byte]struct{}),
+		done:    make(chan struct{}),
 	}
+}
+
+func (b *DetectionBroker) Shutdown() {
+	b.once.Do(func() {
+		close(b.done)
+	})
 }
 
 func (b *DetectionBroker) Broadcast(payload []byte) {
