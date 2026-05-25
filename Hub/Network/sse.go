@@ -5,15 +5,11 @@ import (
 	"sync"
 )
 
-type DogDetection struct {
-	Confidence float64 `json:"confidence"`
-}
-
 type DetectionEvent struct {
-	Stream     string         `json:"stream"`
-	Count      int            `json:"count"`
-	Detections []DogDetection `json:"detections"`
-	Timestamp  string         `json:"timestamp"`
+	Stream         string `json:"stream"`
+	DogDetected    bool   `json:"dog_detected"`
+	PersonDetected bool   `json:"person_detected"`
+	Timestamp      string `json:"timestamp"`
 }
 
 type DetectionBroker struct {

@@ -135,8 +135,9 @@ func (c *Concierge) PublishDetectionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if event.Count == 0 {
-		event.Count = len(event.Detections)
+	if !event.DogDetected && !event.PersonDetected {
+		http.Error(w, "missing detection type", http.StatusBadRequest)
+		return
 	}
 
 	if event.Timestamp == "" {
@@ -186,7 +187,7 @@ func (c *Concierge) DetectionEventHandler(w http.ResponseWriter, r *http.Request
 			return
 
 		case payload := <-ch:
-			fmt.Fprint(w, "event: dog_detection\n")
+			fmt.Fprint(w, "event: object_detection\n")
 			fmt.Fprintf(w, "data: %s\n\n", payload)
 			flusher.Flush()
 

@@ -152,8 +152,31 @@
       white-space: nowrap;
     }
 
+    .dogBadge {
+      border-color: #f59e0b;
+      color: #fde68a;
+      background: #451a03;
+    }
+
+    .personBadge {
+      border-color: #a855f7;
+      color: #f3e8ff;
+      background: #3b0764;
+    }
+
     .detectionBadge.hidden {
       display: none;
+    }
+
+    .badgeGroup {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badgeGroup .detectionBadge {
+      margin-left: 0;
     }
 
     .inactiveEmpty {
@@ -169,6 +192,14 @@
       .cardHeader {
         align-items: flex-start;
         flex-direction: column;
+      }
+
+      .badgeGroup {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
       }
 
       .stopBtn {
@@ -317,10 +348,17 @@
         label.className = "label";
         label.textContent = "[" + hostname + "]";
 
-        const detectionBadge = document.createElement("span");
-        detectionBadge.className = "detectionBadge hidden";
-        detectionBadge.dataset.stream = hostname;
-        detectionBadge.textContent = "";
+        const personBadge = document.createElement("span");
+        personBadge.className = "detectionBadge personBadge hidden";
+        personBadge.dataset.stream = hostname;
+        personBadge.dataset.kind = "person"
+        personBadge.textContent = "";
+
+        const dogBadge = document.createElement("span");
+        dogBadge.className = "detectionBadge dogBadge hidden";
+        dogBadge.dataset.stream = hostname;
+        dogBadge.dataset.kind = "dog"
+        dogBadge.textContent = "";
 
         const stopBtn = document.createElement("button");
         stopBtn.className = "stopBtn";
@@ -338,8 +376,13 @@
         const header = document.createElement("div");
         header.className = "cardHeader";
 
+        const badgeGroup = document.createElement("div");
+        badgeGroup.className = "badgeGroup";
+        badgeGroup.appendChild(personBadge);
+        badgeGroup.appendChild(dogBadge);
+
         header.appendChild(label);
-        header.appendChild(detectionBadge);
+        header.appendChild(badgeGroup);
         header.appendChild(stopBtn);
 
         card.appendChild(header);
@@ -379,7 +422,7 @@
     function connectDetectionEvents() {
       const events = new EventSource("{{.DetectionEventsURL}}");
 
-      events.addEventListener("dog_detection", (event) => {
+      events.addEventListener("object_detection", (event) => {
         let detection;
 
         try {
@@ -389,7 +432,7 @@
           return;
         }
 
-        console.log("dog detection:", detection);
+        console.log("object detection:", detection);
         renderDetection(detection);
       });
 
@@ -401,14 +444,31 @@
     function renderDetection(detection) {
       if (!detection || !detection.stream) return;
 
+      if (detection.person_detected) {
+        showDetectionBadge(detection.stream, "person")
+      }
+
+      if (detection.dog_detected) {
+        showDetectionBadge(detection.stream, "dog")
+      }
+    }
+
+    function showDetectionBadge(stream, kind) {
       const badge = document.querySelector(
-        `.detectionBadge[data-stream="${CSS.escape(detection.stream)}"]`
+        `.detectionBadge[data-stream="${CSS.escape(stream)}"][data-kind="${CSS.escape(kind)}"]`
       );
 
       if (!badge) return;
 
       badge.classList.remove("hidden");
-      badge.textContent = "DOG DETECTED";
+
+      if (kind === "person") {
+        badge.textContent = "PERSON DETECTED";
+      }
+
+      if (kind === "dog") {
+        badge.textContent = "DOG DETECTED";
+      }
 
       clearTimeout(badge._hideTimer);
       badge._hideTimer = setTimeout(() => {

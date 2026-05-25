@@ -11,8 +11,13 @@ import cv2
 from ultralytics import YOLO
 
 
-DOG_CLASS_ID = 16  # COCO class id for "dog"
+DOG_CLASS_ID = 16
+PERSON_CLASS_ID = 0
 
+CLASS_NAMES = {
+    DOG_CLASS_ID: "dog",
+    PERSON_CLASS_ID: "person"
+}
 
 @dataclass
 class Config:
@@ -124,7 +129,7 @@ class StreamWorker:
     def process_stream(self, cap):
         frame_count = 0
         last_status_log = 0.0
-        last_dog_log = 0.0
+        last_detection_log = 0.0
 
         while not self.stop_event.is_set():
             ok, frame = cap.read()
@@ -147,24 +152,28 @@ class StreamWorker:
                 )
                 last_status_log = now
 
-            dog_detections = self.detect_dogs(frame)
+            detections = self.detect_objects(frame)
 
-            if dog_detections and now - last_dog_log >= 1:
+            dog_detected = any(d["class"] == "dog" for d in detections)
+            person_detected = any(d["class"] == "person" for d in detections)
+
+            if (dog_detected or person_detected) and now - last_detection_log >= 1:
                 print(
-                    f"[{self.stream_name}] DOG DETECTED: "
-                    f"count={len(dog_detections)} detections={dog_detections}",
+                    f"[{self.stream_name}] OBJECTS DETECTED: "
+                    f"dog_detected={dog_detected} "
+                    f"person_detected={person_detected}",
                     flush=True,
                 )
 
-                self.publish_detections(dog_detections)
-                last_dog_log = now
+                self.publish_detection_events(dog_detected, person_detected)
+                last_detection_log = now
 
-    def detect_dogs(self, frame):
+    def detect_objects(self, frame):
         with self.model_lock:
             results = self.model.predict(
                 source=frame,
                 conf=self.config.confidence,
-                classes=[DOG_CLASS_ID],
+                classes=[PERSON_CLASS_ID, DOG_CLASS_ID],
                 verbose=False,
             )
 
@@ -175,11 +184,14 @@ class StreamWorker:
                 continue
 
             for box in result.boxes:
+                class_id = int(box.cls[0])
                 confidence = float(box.conf[0])
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
 
                 detections.append(
                     {
+                        "class": CLASS_NAMES.get(class_id, "unknown"),
+                        "class_id": class_id,
                         "confidence": round(confidence, 3),
                         "box": {
                             "x1": int(x1),
@@ -192,11 +204,11 @@ class StreamWorker:
 
         return detections
 
-    def publish_detections(self, dog_detections):
+    def publish_detection_events(self, dog_detected: bool, person_detected: bool):
         payload = {
             "stream": self.stream_name,
-            "count": len(dog_detections),
-            "detections": dog_detections,
+            "dog_detected": dog_detected,
+            "person_detected": person_detected,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
