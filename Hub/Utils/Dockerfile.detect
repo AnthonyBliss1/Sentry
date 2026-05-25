@@ -16,6 +16,6 @@ RUN pip install \
 
 RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
 
-COPY detect-dog.py /app/detect-dog.py
+COPY detect-object.py /app/detect-object.py
 
-CMD ["python", "-u", "/app/detect-dog.py"]
+CMD ["python", "-u", "/app/detect-object.py"]
