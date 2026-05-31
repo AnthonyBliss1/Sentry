@@ -15,6 +15,7 @@ type Commander struct {
 
 type Message struct {
 	Recipient string `json:"recipient"` // this will be the hostname for the intended node
+	Alias     string `json:"alias,omitempty"`
 	Action    string `json:"action"`
 	NewNode   Node   `json:"new_node"`
 }
@@ -53,10 +54,17 @@ func (c *Commander) DialCommander(action chan<- Message) error {
 			if msg.Recipient == utils.Hostname {
 				utils.Green.Println("WS Message Received: ", msg)
 
-				// after confirming the recipient, send the msg to the channel
-				// channel used to pass data to video publishing go routine
-				utils.Blue.Println("> Sending to channel...")
-				action <- *msg
+				// just handle aliase actions immediately
+				if msg.Action == "set_alias" {
+					if err := utils.SetAlias(msg.Alias); err != nil {
+						utils.Red.Printf("> Failed to set alias: %s", err)
+					}
+				} else {
+					// send the msg to the channel
+					// channel used to pass data to video publishing go routine
+					utils.Blue.Println("> Sending to channel...")
+					action <- *msg
+				}
 			}
 		}
 	}

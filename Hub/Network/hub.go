@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"strings"
 
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 	"github.com/go-chi/chi"
@@ -72,7 +73,7 @@ func (h *Hub) StartConciergeService() {
 }
 
 func (h *Hub) StartCommanderService() {
-	h.Commander = NewCommander()
+	h.Commander = NewCommander(h.SetAlias)
 
 	go h.RunCommander()
 
@@ -118,4 +119,23 @@ func (h *Hub) StartMDNS() {
 		utils.Red.Printf("WebSocket MDNS Server Shutdown: %q\n", err)
 		return
 	}
+}
+
+func (h *Hub) SetAlias(hostname string, alias string) {
+	h.aliasMu.Lock()
+	defer h.aliasMu.Unlock()
+
+	if h.aliases == nil {
+		h.aliases = make(map[string]string)
+	}
+
+	hostname = strings.TrimSpace(hostname)
+	alias = strings.TrimSpace(alias)
+
+	// dont allow empty values
+	if hostname == "" || alias == "" {
+		return
+	}
+
+	h.aliases[hostname] = alias
 }

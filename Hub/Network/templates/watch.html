@@ -59,6 +59,14 @@
       color: #cbd5e1;
       word-break: break-word;
       flex: 1;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 3px;
+    }
+
+    .label:hover {
+      color: #f8fafc;
     }
 
     .stopBtn {
@@ -231,6 +239,9 @@
     const inactiveBarEl = document.getElementById("inactiveBar");
     const socket = new WebSocket("{{.WebSocketURL}}");
 
+    const initialAliases = {{.AliasJSON}};
+    let nodeAliases = new Map(Object.entries(initialAliases || {}));
+
     let connectedNodes = new Map();
     let publishingNodes = new Map();
 
@@ -292,7 +303,7 @@
         const btn = document.createElement("button");
         btn.className = "startBtn";
         btn.type = "button";
-        btn.textContent = `Turn On ${node.hostname}`;
+        btn.textContent = `Turn On ${displayNameFor(node.hostname)}`;
 
         btn.addEventListener("click", () => {
           sendStartMessage(socket, node.hostname);
@@ -319,6 +330,7 @@
 
       if (nextKey === currentKey) {
         console.log(`${streams.length} active camera(s)`);
+        refreshAliasLabels()
         return;
       }
 
@@ -346,7 +358,15 @@
 
         const label = document.createElement("div");
         label.className = "label";
-        label.textContent = "[" + hostname + "]";
+        label.dataset.hostname = hostname;
+        label.tabIndex = 0;
+        label.setAttribute("role", "button");
+
+        setCameraLabel(label, hostname);
+
+        label.addEventListener("click", () => {
+          promptForAlias(hostname);
+        });
 
         const personBadge = document.createElement("span");
         personBadge.className = "detectionBadge personBadge hidden";
@@ -475,6 +495,65 @@
         badge.classList.add("hidden");
         badge.textContent = "";
       }, 2500);
+    }
+
+    function displayNameFor(hostname) {
+      return nodeAliases.get(hostname) || hostname;
+    }
+
+    function setCameraLabel(labelEl, hostname) {
+      const displayName = displayNameFor(hostname);
+
+      labelEl.textContent = "[" + displayName + "]";
+      labelEl.title = displayName === hostname
+        ? "Click to set alias"
+        : `Original hostname: ${hostname}`;
+    }
+
+    function refreshAliasLabels() {
+      document.querySelectorAll(".label[data-hostname]").forEach((labelEl) => {
+        setCameraLabel(labelEl, labelEl.dataset.hostname);
+      });
+    }
+
+    function promptForAlias(hostname) {
+      const currentAlias = nodeAliases.get(hostname) || "";
+
+      const nextAlias = window.prompt(
+        `Set alias for ${hostname}`,
+        currentAlias
+      );
+
+      if (nextAlias === null) {
+        return;
+      }
+
+      const alias = nextAlias.trim();
+
+      if (alias === "") {
+        alert("Alias cannot be empty.");
+        return;
+      }
+
+      nodeAliases.set(hostname, alias);
+
+      refreshAliasLabels();
+      renderConnectedNodes();
+
+      sendAliasMessage(socket, hostname, alias);
+    }
+
+    function sendAliasMessage(socket, recipient, alias) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket is not open");
+        return;
+      }
+
+      socket.send(JSON.stringify({
+        recipient: recipient,
+        action: "set_alias",
+        alias: alias
+      }));
     }
 
     async function loadStreams() {

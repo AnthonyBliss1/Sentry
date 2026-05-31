@@ -3,6 +3,7 @@ package network
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -14,6 +15,7 @@ var upgrader = websocket.Upgrader{
 
 type Message struct {
 	Recipient      string `json:"recipient"` // this will be the hostname for the intended node
+	Alias          string `json:"alias,omitempty"`
 	Action         string `json:"action"`
 	NewNode        Node   `json:"new_node"`
 	ConnectedNodes []Node `json:"connected_nodes"` // for the frontend
@@ -38,9 +40,11 @@ type Commander struct {
 	register       chan *Client
 	unregister     chan *Client
 	shutdown       chan struct{}
+
+	SetAlias func(hostname string, alias string)
 }
 
-func NewCommander() *Commander {
+func NewCommander(setAlias func(hostname string, alias string)) *Commander {
 	return &Commander{
 		Clients:        make(map[*Client]bool),
 		ConnectedNodes: make(map[string]Node),
@@ -48,6 +52,7 @@ func NewCommander() *Commander {
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		shutdown:       make(chan struct{}),
+		SetAlias:       setAlias,
 	}
 }
 
@@ -120,6 +125,16 @@ func (cd *Commander) RunCommander() {
 				cd.ConnectedNodes[hostname] = msg.NewNode
 
 				cd.Broadcast(Message{Recipient: "All", Action: "node_connected", ConnectedNodes: cd.connectedNodeList()})
+
+			case "set_alias":
+				hostname := strings.TrimSpace(msg.Recipient)
+				alias := strings.TrimSpace(msg.Alias)
+
+				// set alias on server side
+				cd.SetAlias(hostname, alias)
+
+				// send message to all nodes
+				cd.Broadcast(msg)
 
 			default:
 				cd.Broadcast(msg)

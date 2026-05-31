@@ -3,15 +3,21 @@ package network
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
+	"maps"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type Concierge struct {
-	RTSPPublishBase string           `json:"rtsp_publish_base"`
-	WebRTCBase      string           `json:"webrtc_base"`
-	HLSBase         string           `json:"hls_base"`
-	Detections      *DetectionBroker `json:"-"`
+	RTSPPublishBase string `json:"rtsp_publish_base"`
+	WebRTCBase      string `json:"webrtc_base"`
+	HLSBase         string `json:"hls_base"`
+	Detections      *DetectionBroker
+
+	aliases map[string]string
+	aliasMu sync.Mutex
 
 	wsURL string // private for watch template
 }
@@ -22,6 +28,9 @@ type WatchPageData struct {
 	DefaultPath        string
 	WebSocketURL       string
 	DetectionEventsURL string
+
+	Aliases   map[string]string // hostname is the key, alias is the value
+	AliasJSON template.JS
 }
 
 type StreamsResponse struct {
@@ -58,18 +67,43 @@ func (c *Concierge) WatchHandler(w http.ResponseWriter, r *http.Request) {
 		path = "cam"
 	}
 
+	// raw go maps dont work nicely with JS
+
+	aliases := c.AliasSnapshot()
+
+	aliasesJSON, err := json.Marshal(aliases)
+	if err != nil {
+		http.Error(w, "failed to marshal aliases", http.StatusInternalServerError)
+		return
+	}
+
 	data := WatchPageData{
 		Title:              "Sentry Command Center",
 		WebRTCBase:         c.WebRTCBase,
 		DefaultPath:        path,
 		WebSocketURL:       c.wsURL,
 		DetectionEventsURL: "/api/detections/events",
+		Aliases:            aliases,
+		AliasJSON:          template.JS(aliasesJSON),
 	}
 
 	if err := watchTemplate.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// wrapper for a mu lock to prevent races
+
+func (c *Concierge) AliasSnapshot() map[string]string {
+	c.aliasMu.Lock()
+	defer c.aliasMu.Unlock()
+
+	out := make(map[string]string, len(c.aliases))
+
+	maps.Copy(out, c.aliases)
+
+	return out
 }
 
 func (c *Concierge) StreamsHandler(w http.ResponseWriter, r *http.Request) {
