@@ -12,8 +12,8 @@ import (
 
 	deploy "github.com/anthonybliss1/Sentry/Hub/Deploy"
 	network "github.com/anthonybliss1/Sentry/Hub/Network"
+	services "github.com/anthonybliss1/Sentry/Hub/Services"
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
-	"github.com/docker/compose/v5/pkg/api"
 )
 
 var hub network.Hub
@@ -59,22 +59,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// create composer
-	composer, err := utils.CreateComposer()
-	if err != nil {
+	// create service containers
+	var CC services.ContainerController
+
+	// create mediamtx & obj detection services
+	mtxService := services.Service{Name: "sentry-hub-mediamtx", ComposeYML: "mtx-compose.yml", Files: []string{"mtx-compose.yml", "mediamtx.yml"}}
+	objDetectService := services.Service{Name: "sentry-hub-object-detection", ComposeYML: "obj-detect-compose.yml", Files: []string{"obj-detect-compose.yml", "Dockerfile.detect", "detect-object.py"}}
+
+	CC.Containers = append(CC.Containers, &services.Container{Service: &mtxService}, &services.Container{Service: &objDetectService})
+
+	// create the composers for all services
+	if err := CC.CreateAllComposers(); err != nil {
 		log.Fatal(err)
 	}
 
-	// start the composer
-	utils.Blue.Println("> Starting MediaMTX & Object Detection containers...")
-	if err := composer.Service.Up(composer.Ctx, composer.Project, api.UpOptions{
-		Create: api.CreateOptions{
-			Build: &api.BuildOptions{
-				Progress: "plain",
-				Out:      os.Stdout,
-			},
-		},
-	}); err != nil {
+	// start the service composers
+	utils.Blue.Println("> Starting service containers...")
+	if err := CC.StartAllServices(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -130,8 +131,8 @@ func main() {
 		hub.Shutdown() // calls Commander.Shutdown()
 	}
 
-	utils.Blue.Println("> Taking down MediaMTX & Object Detection containers...")
-	if err := composer.Service.Down(composer.Ctx, composer.Project.Name, api.DownOptions{Images: "all"}); err != nil {
+	utils.Blue.Println("> Taking down service containers...")
+	if err := CC.StopAllServices(); err != nil {
 		utils.Red.Println(err)
 	}
 

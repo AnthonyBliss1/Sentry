@@ -1,0 +1,22 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    container_name: mediamtx
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${LAN_IP}
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "8889:8889"
+      - "8890:8890/udp"
+      - "8189:8189/udp"
+      - "9997:9997"
+    networks:
+      - sentry-hub
+
+networks:
+  sentry-hub:
+    name: sentry-hub
