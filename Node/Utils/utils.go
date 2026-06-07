@@ -34,7 +34,7 @@ func SetHostname() error {
 	// first check if there is a stored alias
 	alias, err := GetAlias()
 	if err != nil {
-		return err
+		Red.Printf("failed to collect alias: %q\n", err)
 	}
 
 	// prioritize the stored alias over the machines hostname

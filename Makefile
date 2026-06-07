@@ -26,7 +26,7 @@ hub: dirs
 
 node: dirs
 	cd $(NODE_DIR) && GOOS=linux GOARCH=arm64 go build -o ../$(NODE_BUILD_DIR)/$(NODE_BINARY)
-	scp $(NODE_BUILD_DIR)/$(NODE_BINARY) $(NODE_5_DEVICE):~
+	scp $(NODE_BUILD_DIR)/$(NODE_BINARY) $(NODE_DEVICE):~
 
 local-hub: dirs 
 	cd $(HUB_DIR) && go build -o ../$(HUB_BUILD_DIR)/$(HUB_BINARY)
