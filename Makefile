@@ -13,7 +13,7 @@ HUB_DEVICE := $(HUB_DEVICE)
 NODE_DEVICE := $(NODE_DEVICE)
 NODE_5_DEVICE := $(NODE_5_DEVICE)
 
-.PHONY: all hub node clean dirs deploy-hub deploy-node
+.PHONY: all hub node clean dirs
 
 all: hub node
 
