@@ -47,6 +47,11 @@ func main() {
 		}
 
 		utils.Blue.Println("\nSentry Hub successfully deployed!")
+
+		if err := deploy.RunCloudflaredDeploy(); err != nil {
+			utils.Red.Printf("%q\n", err)
+		}
+
 		return
 	}
 

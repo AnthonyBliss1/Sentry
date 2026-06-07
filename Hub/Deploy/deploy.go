@@ -13,6 +13,8 @@ import (
 	utils "github.com/anthonybliss1/Sentry/Hub/Utils"
 )
 
+var UserOS string
+
 const (
 	systemDTemp = `[Unit]
 Description=sentry-hub
@@ -46,7 +48,7 @@ WantedBy=multi-user.target
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>HOME</key>
-		<string>/Users/%s</string>
+		<string>%s</string>
 
 		<key>PATH</key>
 		<string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
@@ -74,14 +76,16 @@ WantedBy=multi-user.target
 )
 
 func DeployHub() error {
+	var err error
+
 	utils.Green.Println("[ Deploying Hub Server... ]")
 
-	os, err := checkOS()
+	UserOS, err = checkOS()
 	if err != nil {
 		return err
 	}
 
-	switch os {
+	switch UserOS {
 	case "linux":
 		if err := createSystemdService(); err != nil {
 			return err
@@ -125,8 +129,8 @@ func createSystemdService() error {
 	logPath := "/var/log/sentry/sentry-hub.log"
 
 	// make sure log directory exists
-	if err := os.MkdirAll("/var/log/sentry", 0o755); err != nil {
-		return err
+	if out, err := exec.Command("sudo", "mkdir", "-p", "/var/log/sentry").CombinedOutput(); err != nil {
+		return fmt.Errorf("mkdir log dir failed: %q (%s)", err, string(out))
 	}
 
 	unitText := fmt.Sprintf(systemDTemp, user, bDir, bPath, logPath, logPath)
@@ -134,19 +138,29 @@ func createSystemdService() error {
 	utils.Green.Println("[ Creating unit file ... ]")
 
 	servicePath := "/etc/systemd/system/sentry-hub.service"
-	if err := os.WriteFile(servicePath, []byte(unitText), 0o644); err != nil {
+	tmpServicePath := "/tmp/sentry-hub.service"
+
+	if err := os.WriteFile(tmpServicePath, []byte(unitText), 0o644); err != nil {
 		return err
+	}
+
+	if out, err := exec.Command("sudo", "cp", tmpServicePath, servicePath).CombinedOutput(); err != nil {
+		return fmt.Errorf("copy service file failed: %q (%s)", err, string(out))
+	}
+
+	if out, err := exec.Command("sudo", "chmod", "644", servicePath).CombinedOutput(); err != nil {
+		return fmt.Errorf("chmod service file failed: %q (%s)", err, string(out))
 	}
 
 	utils.Green.Println("[ Reloading systemctl daemon ... ]")
 
-	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "systemctl", "daemon-reload").CombinedOutput(); err != nil {
 		return fmt.Errorf("daemon-reload failed: %q (%s)", err, string(out))
 	}
 
 	utils.Green.Println("[ Enabling service ... ]")
 
-	if out, err := exec.Command("systemctl", "enable", "sentry-hub.service").CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "systemctl", "enable", "sentry-hub.service").CombinedOutput(); err != nil {
 		if !strings.Contains(string(out), "is enabled") {
 			return fmt.Errorf("enable failed: %q (%s)", err, string(out))
 		}
@@ -154,7 +168,7 @@ func createSystemdService() error {
 
 	utils.Green.Println("[ Restarting service ... ]")
 
-	if out, err := exec.Command("systemctl", "restart", "sentry-hub.service").CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "systemctl", "restart", "sentry-hub.service").CombinedOutput(); err != nil {
 		return fmt.Errorf("restart failed: %q (%s)", err, string(out))
 	}
 
@@ -172,14 +186,14 @@ func createLaunchdService() error {
 		return fmt.Errorf("failed to find current user: %w", err)
 	}
 
-	user := u.Username
-	if user == "root" {
+	username := u.Username
+	if username == "root" {
 		if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-			user = sudoUser
+			username = sudoUser
 		}
 	}
 
-	if err := confirmUser(&user); err != nil {
+	if err := confirmUser(&username); err != nil {
 		return fmt.Errorf("failed to confirm user: %w", err)
 	}
 
@@ -190,50 +204,64 @@ func createLaunchdService() error {
 	logPath := "/var/log/sentry/sentry-hub.log"
 
 	// make sure log directory exists
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return err
+	if out, err := exec.Command("sudo", "mkdir", "-p", filepath.Dir(logPath)).CombinedOutput(); err != nil {
+		return fmt.Errorf("mkdir log dir failed: %q (%s)", err, string(out))
 	}
 
-	if _, err := os.Stat(logPath); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-
-		if err := os.WriteFile(logPath, nil, 0o644); err != nil {
-			return err
-		}
+	if out, err := exec.Command("sudo", "touch", logPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("touch log failed: %q (%s)", err, string(out))
 	}
 
-	if out, err := exec.Command("chown", user, logPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "chmod", "644", logPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("chmod log failed: %q (%s)", err, string(out))
+	}
+
+	if out, err := exec.Command("sudo", "chown", username, logPath).CombinedOutput(); err != nil {
 		return fmt.Errorf("chown log failed: %q (%s)", err, string(out))
 	}
 
 	servicePath := "/Library/LaunchDaemons/com.sentry.hub.plist"
 
 	utils.Green.Println("[ Unloading existing launchd service ... ]")
-	exec.Command("launchctl", "bootout", "system", servicePath).Run()
+	exec.Command("sudo", "launchctl", "bootout", "system", servicePath).Run()
 
 	utils.Green.Println("[ Creating launchd plist ... ]")
 
-	plistText := fmt.Sprintf(launchDTemp, user, bDir, user, bPath, logPath, logPath)
-
-	if err := os.WriteFile(servicePath, []byte(plistText), 0o644); err != nil {
+	targetUser, err := user.Lookup(username)
+	if err != nil {
 		return err
 	}
 
-	if out, err := exec.Command("chown", "root:wheel", servicePath).CombinedOutput(); err != nil {
+	homeDir := targetUser.HomeDir
+
+	plistText := fmt.Sprintf(launchDTemp, username, bDir, homeDir, bPath, logPath, logPath)
+	tmpPlistPath := "/tmp/com.sentry.hub.plist"
+
+	if err := os.WriteFile(tmpPlistPath, []byte(plistText), 0o644); err != nil {
+		return err
+	}
+
+	if out, err := exec.Command("sudo", "cp", tmpPlistPath, servicePath).CombinedOutput(); err != nil {
+		return fmt.Errorf("copy plist failed: %q (%s)", err, string(out))
+	}
+
+	if out, err := exec.Command("sudo", "chmod", "644", servicePath).CombinedOutput(); err != nil {
+		return fmt.Errorf("chmod plist failed: %q (%s)", err, string(out))
+	}
+
+	if out, err := exec.Command("sudo", "chown", "root:wheel", servicePath).CombinedOutput(); err != nil {
 		return fmt.Errorf("chown failed: %q (%s)", err, string(out))
 	}
 
 	utils.Green.Println("[ Bootstrapping launchd service ... ]")
 
-	if out, err := exec.Command("launchctl", "bootstrap", "system", servicePath).CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "launchctl", "bootstrap", "system", servicePath).CombinedOutput(); err != nil {
 		return fmt.Errorf("bootstrap failed: %q (%s)", err, string(out))
 	}
 
 	utils.Green.Println("[ Restarting launchd service ... ]")
 
-	if out, err := exec.Command("launchctl", "kickstart", "-k", "system/com.sentry.hub").CombinedOutput(); err != nil {
+	if out, err := exec.Command("sudo", "launchctl", "kickstart", "-k", "system/com.sentry.hub").CombinedOutput(); err != nil {
 		return fmt.Errorf("kickstart failed: %q (%s)", err, string(out))
 	}
 
