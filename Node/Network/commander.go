@@ -32,6 +32,8 @@ func (m *Message) String() string {
 func (c *Commander) DialCommander(action chan<- Message) error {
 	var err error
 
+	utils.Blue.Println("> Dialing Commander...")
+
 	c.Conn, _, err = websocket.DefaultDialer.Dial(c.CommanderServiceURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dail commander: %w", err)

@@ -32,6 +32,24 @@ type NodeClient struct {
 // MDNS Lookups
 // ~~~~~~~~~~~~~~~~~~~~~~~
 
+func (n *NodeClient) HubLookup() error {
+	var wg sync.WaitGroup
+
+	utils.Blue.Println("> Looking for Concierge Service...")
+	utils.Blue.Println("> Looking for Commander Service...")
+	wg.Go(n.ConciergeServiceLookup)
+	wg.Go(n.CommanderServiceLookup)
+
+	wg.Wait()
+
+	utils.Blue.Println("> Fetching Concierge...")
+	if err := n.FetchConcierge(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (n *NodeClient) ConciergeServiceLookup() {
 	for {
 		entriesCH := make(chan *mdns.ServiceEntry, 16)

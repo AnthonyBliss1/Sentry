@@ -41,8 +41,11 @@ func (c *Concierge) StreamController(action <-chan Message) error {
 				utils.Red.Println("> There is no active stream!")
 			} else {
 				utils.Blue.Println("> Stopping stream...")
+
 				c.IsRunning = false
-				c.Stop()
+				if err := c.Stop(); err != nil {
+					utils.Red.Println(err)
+				}
 			}
 		}
 
@@ -51,8 +54,12 @@ func (c *Concierge) StreamController(action <-chan Message) error {
 				utils.Red.Println("> There is already an active stream!")
 			} else {
 				utils.Blue.Println("> Starting stream...")
+
 				c.IsRunning = true
-				go c.PublishStream(utils.Hostname)
+				if err := c.PublishStream(utils.Hostname); err != nil {
+					c.IsRunning = false
+					utils.Red.Println(err)
+				}
 			}
 		}
 	}
@@ -65,21 +72,27 @@ func (c *Concierge) Stop() error {
 
 	if c.RpiCmd != nil && c.RpiCmd.Process != nil {
 		if err := c.RpiCmd.Process.Kill(); err != nil && firstErr == nil {
-			firstErr = err
+			firstErr = fmt.Errorf("failed to stop rpicam command: %q", err)
 		}
 	}
+
 	if c.FfmpegCmd != nil && c.FfmpegCmd.Process != nil {
 		if err := c.FfmpegCmd.Process.Kill(); err != nil && firstErr == nil {
-			firstErr = err
+			firstErr = fmt.Errorf("failed to stop ffmpeg command: %q", err)
 		}
 	}
 
 	if c.RpiCmd != nil {
-		c.RpiCmd.Process.Wait()
+		_ = c.RpiCmd.Wait()
+		c.RpiCmd = nil
 	}
+
 	if c.FfmpegCmd != nil {
-		c.FfmpegCmd.Process.Wait()
+		_ = c.FfmpegCmd.Wait()
+		c.FfmpegCmd = nil
 	}
+
+	c.IsRunning = false
 
 	return firstErr
 }
